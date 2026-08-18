@@ -27,12 +27,7 @@ class TrackerModule {
   _remember(ev) {
     if (!ev) return
     this.lastEventTs = ev.ts || this.lastEventTs
-    this.lastEvents.push({
-      ts: ev.ts,
-      seq: ev.seq,
-      kind: ev.kind,
-      raw: ev.raw,
-    })
+    this.lastEvents.push({ ts: ev.ts, seq: ev.seq, kind: ev.kind, raw: ev.raw })
     if (this.lastEvents.length > 100) this.lastEvents.shift()
   }
 
@@ -48,8 +43,7 @@ class TrackerModule {
       const value = Number(coins[name] || 0)
       if (!Number.isFinite(value)) continue
       this.coins[name] += value
-      const multiplier = { platinum: 1000, gold: 100, silver: 10, copper: 1 }[name]
-      totalCopper += value * multiplier
+      totalCopper += value * { platinum: 1000, gold: 100, silver: 10, copper: 1 }[name]
     }
     if (source) this._addMap(this.coinSources, source, totalCopper)
   }
@@ -57,11 +51,7 @@ class TrackerModule {
   onEvent(ev, live) {
     if (!ev) return
     this._remember(ev)
-
-    if (ev.kind === 'sessionStart' && this.startedAt == null) {
-      this.startedAt = ev.ts || Date.now()
-    }
-
+    if (ev.kind === 'sessionStart' && this.startedAt == null) this.startedAt = ev.ts || Date.now()
     if (this.startedAt == null && ev.ts) this.startedAt = ev.ts
 
     switch (ev.kind) {
@@ -88,9 +78,11 @@ class TrackerModule {
         this.skillUps += 1
         this._addMap(this.skills, ev.skill, Number(ev.value || 1))
         break
-      case 'death':
       case 'playerDeath':
         this.deaths += 1
+        break
+      case 'death':
+        if (ev.bySelf) this.kills += 1
         break
       case 'loot': {
         const item = ev.item || 'Unknown'
@@ -101,13 +93,7 @@ class TrackerModule {
         if (ev.source) this._addMap(current.sources, ev.source, count)
         if (ev.disposition) this._addMap(current.dispositions, ev.disposition, count)
         this.loot.set(item, current)
-        this.lastLoot.unshift({
-          ts: ev.ts,
-          item,
-          count,
-          source: ev.source || null,
-          disposition: ev.disposition || 'looted',
-        })
+        this.lastLoot.unshift({ ts: ev.ts, item, count, source: ev.source || null, disposition: ev.disposition || 'looted' })
         if (this.lastLoot.length > 50) this.lastLoot.length = 50
         break
       }
@@ -116,54 +102,29 @@ class TrackerModule {
         break
       case 'consider':
         if (ev.mob && ev.faction) {
-          this.faction.set(ev.mob, {
-            mob: ev.mob,
-            faction: ev.faction,
-            level: ev.level,
-            difficulty: ev.difficulty,
-            rare: !!ev.rare,
-            ts: ev.ts,
-          })
+          this.faction.set(ev.mob, { mob: ev.mob, faction: ev.faction, level: ev.level, difficulty: ev.difficulty, rare: !!ev.rare, ts: ev.ts })
         }
         break
-      case 'death':
-        this.kills += 1
-        break
-      case 'unknown':
-        break
     }
-
-    if (!live) return
   }
 
   _duration(now = Date.now()) {
     if (this.startedAt == null) return 0
-    const end = this.lastEventTs || now
-    return Math.max(0, end - this.startedAt)
+    return Math.max(0, (this.lastEventTs || now) - this.startedAt)
   }
 
   snapshot(now = Date.now()) {
     const durationMs = this._duration(now)
     const hours = durationMs > 0 ? durationMs / 3600000 : 0
-    const loot = Array.from(this.loot.values())
-      .map(entry => ({
-        item: entry.item,
-        count: entry.count,
-        loots: entry.loots,
-        sources: Object.fromEntries(entry.sources),
-        dispositions: Object.fromEntries(entry.dispositions),
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 100)
-
-    const faction = Array.from(this.faction.values())
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-      .slice(0, 100)
-
-    const skills = Array.from(this.skills.entries())
-      .map(([skill, gains]) => ({ skill, gains }))
-      .sort((a, b) => b.gains - a.gains)
-
+    const loot = Array.from(this.loot.values()).map(entry => ({
+      item: entry.item,
+      count: entry.count,
+      loots: entry.loots,
+      sources: Object.fromEntries(entry.sources),
+      dispositions: Object.fromEntries(entry.dispositions),
+    })).sort((a, b) => b.count - a.count).slice(0, 100)
+    const faction = Array.from(this.faction.values()).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 100)
+    const skills = Array.from(this.skills.entries()).map(([skill, gains]) => ({ skill, gains })).sort((a, b) => b.gains - a.gains)
     const totalCopper = this.coins.platinum * 1000 + this.coins.gold * 100 + this.coins.silver * 10 + this.coins.copper
 
     return {
