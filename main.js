@@ -162,7 +162,7 @@ ipcMain.handle('open-log-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
-ipcMain.handle('select-log-folder', async (_, folderPath) => {
+ipcMain.handle('select-log-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
   return result.canceled ? null : result.filePaths[0]
 })
@@ -179,59 +179,128 @@ ipcMain.handle('scan-log-files', async (_, folderPath) => {
 ipcMain.handle('scan-log-dates', async (_, folderPath) => {
   try {
     const files = fs.readdirSync(folderPath)
+    const eqlogs = files
       .filter(f => /eqlog.*\.(txt|log)$/i.test(f))
       .map(f => ({ file: path.join(folderPath, f), mtime: fs.statSync(path.join(folderPath, f)).mtimeMs }))
     const byDate = new Map()
-    for (const entry of files) {
-      const key = new Date(entry.mtime).toISOString().slice(0, 10)
-      if (!byDate.has(key)) byDate.set(key, entry.file)
+    for (const entry of eqlogs) {
+      const d = new Date(entry.mtime)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const existing = byDate.get(key)
+      if (!existing || entry.mtime > existing.mtime) byDate.set(key, { date: key, filePath: entry.file, mtime: entry.mtime })
     }
-    return Array.from(byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+    return Array.from(byDate.values()).sort((a, b) => b.mtime - a.mtime)
   } catch { return [] }
 })
 
+ipcMain.handle('parse-log-for-date', async (_, filePath) => {
+  const tempCombat = new CombatModule()
+  const tempTracker = new TrackerModule()
+  const tempAttribution = new AttributionModule()
+  const tempEncounters = new EncounterEngine()
+  const tempFarming = new FarmingModule()
+  const tempBus = new LogBus()
+  subscribeModules(tempBus, tempCombat, tempTracker, tempAttribution, tempEncounters, tempFarming)
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const lines = content.split(/\r?\n/)
+    const nameMatch = path.basename(filePath).match(/^eqlog_([^_]+)_/i)
+    if (nameMatch) {
+      tempCombat.setPlayerName(nameMatch[1])
+      tempTracker.player = nameMatch[1]
+    }
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].trim()) continue
+      const ev = parseRawLine(lines[i], i + 1)
+      if (ev) tempBus.emit(ev, true)
+    }
+    tempEncounters.onTick(Date.now())
+    return {
+      ...tempCombat.snapshot(),
+      tracker: tempTracker.snapshot(),
+      encounters: tempEncounters.snapshot(),
+      farming: tempFarming.snapshot(),
+    }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('read-log-file', async (_, filePath) => {
+  try { return fs.readFileSync(filePath, 'utf-8') }
+  catch (err) { throw new Error(`Failed to read file: ${err.message}`) }
+})
+
+ipcMain.handle('write-log-file', async (_, filePath, content) => {
+  try { fs.writeFileSync(filePath, content, 'utf-8'); return true }
+  catch (err) { throw new Error(`Failed to write file: ${err.message}`) }
+})
+
+ipcMain.handle('stat-log-file', async (_, filePath) => {
+  try {
+    const stat = fs.statSync(filePath)
+    return { size: stat.size, mtime: stat.mtimeMs }
+  } catch (err) { throw new Error(`Failed to stat file: ${err.message}`) }
+})
+
+ipcMain.handle('close-window', async () => app.quit())
+ipcMain.handle('minimize-window', async () => { if (mainWindow) mainWindow.minimize() })
+
 async function startParser(filePath) {
-  if (parsing) return { ok: false, error: 'Parser already running' }
-  if (!filePath || !fs.existsSync(filePath)) return { ok: false, error: 'Log file not found' }
+  if (tailInterval) clearInterval(tailInterval)
+  combat.reset()
+  tracker.reset()
+  attribution.reset()
+  encounters.reset()
+  farming.reset()
+  seq = 0
   parsing = true
   try {
-    if (tailInterval) clearInterval(tailInterval)
-    bus = new LogBus()
-    combat = new CombatModule()
-    tracker = new TrackerModule()
-    attribution = new AttributionModule()
-    encounters = new EncounterEngine()
-    farming = new FarmingModule()
-    subscribeModules(bus, combat, tracker, attribution, encounters, farming)
-    seq = 0
     const content = fs.readFileSync(filePath, 'utf-8')
-    for (const line of content.split(/\r?\n/)) {
+    const lines = content.split(/\r?\n/)
+    const nameMatch = path.basename(filePath).match(/^eqlog_([^_]+)_/i)
+    if (nameMatch) {
+      combat.setPlayerName(nameMatch[1])
+      tracker.player = nameMatch[1]
+    }
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
       if (!line.trim()) continue
       const ev = parseRawLine(line, ++seq)
       if (ev) bus.emit(ev, false)
+      if (i % 5000 === 0) await new Promise(r => setImmediate(r))
     }
-    tailFile(filePath)
-    saveLastLogPath(filePath)
-    return { ok: true, filePath }
   } catch (err) {
-    return { ok: false, error: err.message }
-  } finally {
     parsing = false
+    return { ok: false, error: err.message }
   }
+  tailFile(filePath)
+  saveLastLogPath(filePath)
+  parsing = false
+  return { ok: true }
 }
 
-ipcMain.handle('start-parser', async (_, filePath) => startParser(filePath))
-ipcMain.handle('stop-parser', async () => {
+ipcMain.handle('parser-start', async (_, filePath) => startParser(filePath))
+
+ipcMain.handle('parser-stop', async () => {
   if (tailInterval) clearInterval(tailInterval)
   tailInterval = null
-  parsing = false
   return { ok: true }
 })
 
-ipcMain.handle('parser-snapshot', () => ({
-  parser: { running: !!tailInterval, logPath, sequence: seq },
-  combat: combat ? combat.snapshot() : null,
-  tracker: tracker ? tracker.snapshot() : null,
-  encounters: encounters ? encounters.snapshot() : null,
-  farming: farming ? farming.snapshot() : null,
-}))
+ipcMain.handle('parser-snapshot', async () => {
+  encounters.onTick(Date.now())
+  return {
+    ...combat.snapshot(),
+    tracker: tracker.snapshot(),
+    encounters: encounters.snapshot(),
+    farming: farming.snapshot(),
+  }
+})
+
+ipcMain.handle('parser-loading', async () => ({ loading: parsing }))
+
+ipcMain.handle('set-meter-scope', async (_, scope) => {
+  combat.setMeterScope(scope)
+  return { ok: true }
+})
