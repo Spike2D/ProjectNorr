@@ -5,10 +5,12 @@ const fs = require('fs')
 const { parseEvent } = require('./src/parser')
 const { LogBus } = require('./src/bus')
 const { CombatModule } = require('./src/combat')
+const { TrackerModule } = require('./src/tracker')
 
 let mainWindow
 let bus
 let combat
+let tracker
 let tailInterval
 let logPath
 let seq = 0
@@ -40,11 +42,13 @@ function saveLastLogPath(p) {
 function createWindow() {
   bus = new LogBus()
   combat = new CombatModule()
+  tracker = new TrackerModule()
   bus.subscribe((ev, live) => {
     if (ev.kind === 'petClaim') {
       combat.claimPet(ev.name)
     }
     combat.onEvent(ev, live)
+    tracker.onEvent(ev, live)
   })
 
   mainWindow = new BrowserWindow({
@@ -177,19 +181,26 @@ ipcMain.handle('scan-log-dates', async (_, folderPath) => {
 
 ipcMain.handle('parse-log-for-date', async (_, filePath) => {
   const tempCombat = new CombatModule()
+  const tempTracker = new TrackerModule()
   const tempBus = new LogBus()
-  tempBus.subscribe((ev, live) => tempCombat.onEvent(ev, live))
+  tempBus.subscribe((ev, live) => {
+    tempCombat.onEvent(ev, live)
+    tempTracker.onEvent(ev, live)
+  })
   try {
     const content = fs.readFileSync(filePath, 'utf-8')
     const lines = content.split(/\r?\n/)
     const nameMatch = path.basename(filePath).match(/^eqlog_([^_]+)_/i)
-    if (nameMatch) tempCombat.setPlayerName(nameMatch[1])
+    if (nameMatch) {
+      tempCombat.setPlayerName(nameMatch[1])
+      tempTracker.player = nameMatch[1]
+    }
     for (let i = 0; i < lines.length; i++) {
       if (!lines[i].trim()) continue
       const ev = parseEvent(lines[i], i + 1)
       if (ev) tempBus.emit(ev, true)
     }
-    return tempCombat.snapshot()
+    return { ...tempCombat.snapshot(), tracker: tempTracker.snapshot() }
   } catch (err) {
     return { error: err.message }
   }
@@ -232,13 +243,17 @@ ipcMain.handle('minimize-window', async () => {
 async function startParser(filePath) {
   if (tailInterval) clearInterval(tailInterval)
   combat.reset()
+  tracker.reset()
   seq = 0
   parsing = true
   try {
     const content = fs.readFileSync(filePath, 'utf-8')
     const lines = content.split(/\r?\n/)
     const nameMatch = path.basename(filePath).match(/^eqlog_([^_]+)_/i)
-    if (nameMatch) combat.setPlayerName(nameMatch[1])
+    if (nameMatch) {
+      combat.setPlayerName(nameMatch[1])
+      tracker.player = nameMatch[1]
+    }
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       if (!line.trim()) continue
@@ -267,7 +282,7 @@ ipcMain.handle('parser-stop', async () => {
 })
 
 ipcMain.handle('parser-snapshot', async () => {
-  return combat.snapshot()
+  return { ...combat.snapshot(), tracker: tracker.snapshot() }
 })
 
 ipcMain.handle('parser-loading', async () => {
