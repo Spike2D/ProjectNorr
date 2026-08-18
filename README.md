@@ -1,0 +1,2 @@
+# ProjectNorr
+EverQuest Legends Assistant
