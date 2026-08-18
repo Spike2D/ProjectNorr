@@ -1,7 +1,5 @@
 class TrackerModule {
-  constructor() {
-    this.reset()
-  }
+  constructor() { this.reset() }
 
   reset() {
     this.startedAt = null
@@ -10,6 +8,7 @@ class TrackerModule {
     this.player = null
     this.level = null
     this.xpGains = 0
+    this.xpPercent = 0
     this.aaGains = 0
     this.aaSpent = 0
     this.kills = 0
@@ -67,6 +66,7 @@ class TrackerModule {
         break
       case 'expGain':
         this.xpGains += 1
+        if (Number.isFinite(ev.pct)) this.xpPercent += ev.pct
         break
       case 'aaGain':
         this.aaGains += Number(ev.amount || 0)
@@ -134,12 +134,14 @@ class TrackerModule {
       durationMs,
       durationSeconds: Math.floor(durationMs / 1000),
       xpGains: this.xpGains,
-      xpPerHour: hours > 0 ? Math.round(this.xpGains / hours) : 0,
+      xpPercent: this.xpPercent,
+      xpPercentPerHour: hours > 0 ? this.xpPercent / hours : 0,
+      xpPerHour: hours > 0 ? this.xpGains / hours : 0,
       aaGains: this.aaGains,
-      aaPerHour: hours > 0 ? Math.round(this.aaGains / hours) : 0,
+      aaPerHour: hours > 0 ? this.aaGains / hours : 0,
       aaSpent: this.aaSpent,
       kills: this.kills,
-      killsPerHour: hours > 0 ? Math.round(this.kills / hours) : 0,
+      killsPerHour: hours > 0 ? this.kills / hours : 0,
       deaths: this.deaths,
       skillUps: this.skillUps,
       skills,
