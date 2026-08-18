@@ -7,12 +7,14 @@ const { LogBus } = require('./src/bus')
 const { CombatModule } = require('./src/combat')
 const { TrackerModule } = require('./src/tracker')
 const { EncounterEngine } = require('./src/encounters')
+const { FarmingModule } = require('./src/farming')
 
 let mainWindow
 let bus
 let combat
 let tracker
 let encounters
+let farming
 let tailInterval
 let logPath
 let seq = 0
@@ -41,19 +43,23 @@ function saveLastLogPath(p) {
   } catch {}
 }
 
+function subscribeModules(targetBus, targetCombat, targetTracker, targetEncounters, targetFarming) {
+  targetBus.subscribe((ev, live) => {
+    if (ev.kind === 'petClaim') targetCombat.claimPet(ev.name)
+    targetCombat.onEvent(ev, live)
+    targetTracker.onEvent(ev, live)
+    targetEncounters.onEvent(ev, live)
+    targetFarming.onEvent(ev, live)
+  })
+}
+
 function createWindow() {
   bus = new LogBus()
   combat = new CombatModule()
   tracker = new TrackerModule()
   encounters = new EncounterEngine()
-  bus.subscribe((ev, live) => {
-    if (ev.kind === 'petClaim') {
-      combat.claimPet(ev.name)
-    }
-    combat.onEvent(ev, live)
-    tracker.onEvent(ev, live)
-    encounters.onEvent(ev, live)
-  })
+  farming = new FarmingModule()
+  subscribeModules(bus, combat, tracker, encounters, farming)
 
   mainWindow = new BrowserWindow({
     width: 850,
@@ -76,15 +82,11 @@ function createWindow() {
     const last = loadLastLogPath()
     if (last) {
       const res = await startParser(last)
-      if (res && res.ok) {
-        mainWindow.webContents.send('parser-auto-started')
-      }
+      if (res && res.ok) mainWindow.webContents.send('parser-auto-started')
     }
   })
 
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools()
-  }
+  if (process.env.NODE_ENV === 'development') mainWindow.webContents.openDevTools()
 }
 
 app.whenReady().then(createWindow)
@@ -142,22 +144,17 @@ ipcMain.handle('open-log-file', async () => {
 })
 
 ipcMain.handle('select-log-folder', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory'],
-  })
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
   return result.canceled ? null : result.filePaths[0]
 })
 
 ipcMain.handle('scan-log-files', async (_, folderPath) => {
   try {
-    const files = fs.readdirSync(folderPath)
-    return files
+    return fs.readdirSync(folderPath)
       .filter(f => /eqlog.*\.(txt|log)$/i.test(f))
       .map(f => path.join(folderPath, f))
       .sort()
-  } catch {
-    return []
-  }
+  } catch { return [] }
 })
 
 ipcMain.handle('scan-log-dates', async (_, folderPath) => {
@@ -165,35 +162,25 @@ ipcMain.handle('scan-log-dates', async (_, folderPath) => {
     const files = fs.readdirSync(folderPath)
     const eqlogs = files
       .filter(f => /eqlog.*\.(txt|log)$/i.test(f))
-      .map(f => ({
-        file: path.join(folderPath, f),
-        mtime: fs.statSync(path.join(folderPath, f)).mtimeMs,
-      }))
+      .map(f => ({ file: path.join(folderPath, f), mtime: fs.statSync(path.join(folderPath, f)).mtimeMs }))
     const byDate = new Map()
     for (const entry of eqlogs) {
       const d = new Date(entry.mtime)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       const existing = byDate.get(key)
-      if (!existing || entry.mtime > existing.mtime) {
-        byDate.set(key, { date: key, filePath: entry.file, mtime: entry.mtime })
-      }
+      if (!existing || entry.mtime > existing.mtime) byDate.set(key, { date: key, filePath: entry.file, mtime: entry.mtime })
     }
     return Array.from(byDate.values()).sort((a, b) => b.mtime - a.mtime)
-  } catch {
-    return []
-  }
+  } catch { return [] }
 })
 
 ipcMain.handle('parse-log-for-date', async (_, filePath) => {
   const tempCombat = new CombatModule()
   const tempTracker = new TrackerModule()
   const tempEncounters = new EncounterEngine()
+  const tempFarming = new FarmingModule()
   const tempBus = new LogBus()
-  tempBus.subscribe((ev, live) => {
-    tempCombat.onEvent(ev, live)
-    tempTracker.onEvent(ev, live)
-    tempEncounters.onEvent(ev, live)
-  })
+  subscribeModules(tempBus, tempCombat, tempTracker, tempEncounters, tempFarming)
   try {
     const content = fs.readFileSync(filePath, 'utf-8')
     const lines = content.split(/\r?\n/)
@@ -208,51 +195,43 @@ ipcMain.handle('parse-log-for-date', async (_, filePath) => {
       if (ev) tempBus.emit(ev, true)
     }
     tempEncounters.onTick(Date.now())
-    return { ...tempCombat.snapshot(), tracker: tempTracker.snapshot(), encounters: tempEncounters.snapshot() }
+    return {
+      ...tempCombat.snapshot(),
+      tracker: tempTracker.snapshot(),
+      encounters: tempEncounters.snapshot(),
+      farming: tempFarming.snapshot(),
+    }
   } catch (err) {
     return { error: err.message }
   }
 })
 
 ipcMain.handle('read-log-file', async (_, filePath) => {
-  try {
-    return fs.readFileSync(filePath, 'utf-8')
-  } catch (err) {
-    throw new Error(`Failed to read file: ${err.message}`)
-  }
+  try { return fs.readFileSync(filePath, 'utf-8') }
+  catch (err) { throw new Error(`Failed to read file: ${err.message}`) }
 })
 
 ipcMain.handle('write-log-file', async (_, filePath, content) => {
-  try {
-    fs.writeFileSync(filePath, content, 'utf-8')
-    return true
-  } catch (err) {
-    throw new Error(`Failed to write file: ${err.message}`)
-  }
+  try { fs.writeFileSync(filePath, content, 'utf-8'); return true }
+  catch (err) { throw new Error(`Failed to write file: ${err.message}`) }
 })
 
 ipcMain.handle('stat-log-file', async (_, filePath) => {
   try {
     const stat = fs.statSync(filePath)
     return { size: stat.size, mtime: stat.mtimeMs }
-  } catch (err) {
-    throw new Error(`Failed to stat file: ${err.message}`)
-  }
+  } catch (err) { throw new Error(`Failed to stat file: ${err.message}`) }
 })
 
-ipcMain.handle('close-window', async () => {
-  app.quit()
-})
-
-ipcMain.handle('minimize-window', async () => {
-  if (mainWindow) mainWindow.minimize()
-})
+ipcMain.handle('close-window', async () => app.quit())
+ipcMain.handle('minimize-window', async () => { if (mainWindow) mainWindow.minimize() })
 
 async function startParser(filePath) {
   if (tailInterval) clearInterval(tailInterval)
   combat.reset()
   tracker.reset()
   encounters.reset()
+  farming.reset()
   seq = 0
   parsing = true
   try {
@@ -280,9 +259,7 @@ async function startParser(filePath) {
   return { ok: true }
 }
 
-ipcMain.handle('parser-start', async (_, filePath) => {
-  return startParser(filePath)
-})
+ipcMain.handle('parser-start', async (_, filePath) => startParser(filePath))
 
 ipcMain.handle('parser-stop', async () => {
   if (tailInterval) clearInterval(tailInterval)
@@ -292,12 +269,15 @@ ipcMain.handle('parser-stop', async () => {
 
 ipcMain.handle('parser-snapshot', async () => {
   encounters.onTick(Date.now())
-  return { ...combat.snapshot(), tracker: tracker.snapshot(), encounters: encounters.snapshot() }
+  return {
+    ...combat.snapshot(),
+    tracker: tracker.snapshot(),
+    encounters: encounters.snapshot(),
+    farming: farming.snapshot(),
+  }
 })
 
-ipcMain.handle('parser-loading', async () => {
-  return { loading: parsing }
-})
+ipcMain.handle('parser-loading', async () => ({ loading: parsing }))
 
 ipcMain.handle('set-meter-scope', async (_, scope) => {
   combat.setMeterScope(scope)
