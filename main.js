@@ -6,11 +6,13 @@ const { parseEvent } = require('./src/parser')
 const { LogBus } = require('./src/bus')
 const { CombatModule } = require('./src/combat')
 const { TrackerModule } = require('./src/tracker')
+const { EncounterEngine } = require('./src/encounters')
 
 let mainWindow
 let bus
 let combat
 let tracker
+let encounters
 let tailInterval
 let logPath
 let seq = 0
@@ -43,12 +45,14 @@ function createWindow() {
   bus = new LogBus()
   combat = new CombatModule()
   tracker = new TrackerModule()
+  encounters = new EncounterEngine()
   bus.subscribe((ev, live) => {
     if (ev.kind === 'petClaim') {
       combat.claimPet(ev.name)
     }
     combat.onEvent(ev, live)
     tracker.onEvent(ev, live)
+    encounters.onEvent(ev, live)
   })
 
   mainWindow = new BrowserWindow({
@@ -102,6 +106,7 @@ function tailFile(filePath) {
 
   tailInterval = setInterval(() => {
     try {
+      encounters.onTick(Date.now())
       const stat = fs.statSync(filePath)
       if (stat.size < lastSize) lastSize = 0
       if (stat.size === lastSize) return
@@ -182,10 +187,12 @@ ipcMain.handle('scan-log-dates', async (_, folderPath) => {
 ipcMain.handle('parse-log-for-date', async (_, filePath) => {
   const tempCombat = new CombatModule()
   const tempTracker = new TrackerModule()
+  const tempEncounters = new EncounterEngine()
   const tempBus = new LogBus()
   tempBus.subscribe((ev, live) => {
     tempCombat.onEvent(ev, live)
     tempTracker.onEvent(ev, live)
+    tempEncounters.onEvent(ev, live)
   })
   try {
     const content = fs.readFileSync(filePath, 'utf-8')
@@ -200,7 +207,8 @@ ipcMain.handle('parse-log-for-date', async (_, filePath) => {
       const ev = parseEvent(lines[i], i + 1)
       if (ev) tempBus.emit(ev, true)
     }
-    return { ...tempCombat.snapshot(), tracker: tempTracker.snapshot() }
+    tempEncounters.onTick(Date.now())
+    return { ...tempCombat.snapshot(), tracker: tempTracker.snapshot(), encounters: tempEncounters.snapshot() }
   } catch (err) {
     return { error: err.message }
   }
@@ -244,6 +252,7 @@ async function startParser(filePath) {
   if (tailInterval) clearInterval(tailInterval)
   combat.reset()
   tracker.reset()
+  encounters.reset()
   seq = 0
   parsing = true
   try {
@@ -282,7 +291,8 @@ ipcMain.handle('parser-stop', async () => {
 })
 
 ipcMain.handle('parser-snapshot', async () => {
-  return { ...combat.snapshot(), tracker: tracker.snapshot() }
+  encounters.onTick(Date.now())
+  return { ...combat.snapshot(), tracker: tracker.snapshot(), encounters: encounters.snapshot() }
 })
 
 ipcMain.handle('parser-loading', async () => {
