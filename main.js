@@ -4,6 +4,7 @@ const fs = require('fs')
 
 const { parseEvent } = require('./src/parser')
 const { enhanceEvent } = require('./src/parser-enhancements')
+const { AttributionModule } = require('./src/attribution')
 const { LogBus } = require('./src/bus')
 const { CombatModule } = require('./src/combat')
 const { TrackerModule } = require('./src/tracker')
@@ -14,6 +15,7 @@ let mainWindow
 let bus
 let combat
 let tracker
+let attribution
 let encounters
 let farming
 let tailInterval
@@ -30,7 +32,8 @@ function parseRawLine(line, sequence) {
   const parsed = parseEvent(line, sequence)
   if (!parsed) return null
   const match = /^\[(.+?)\]\s?(.*)$/.exec(line)
-  return enhanceEvent(match ? match[2] : '', parsed, sequence, parsed.ts, line)
+  const event = enhanceEvent(match ? match[2] : '', parsed, sequence, parsed.ts, line)
+  return attribution ? attribution.process(event) : event
 }
 
 function getLastLogPath() {
@@ -56,9 +59,11 @@ function saveLastLogPath(p) {
   } catch {}
 }
 
-function subscribeModules(targetBus, targetCombat, targetTracker, targetEncounters, targetFarming) {
-  targetBus.subscribe((ev, live) => {
-    if (ev.kind === 'petClaim') targetCombat.claimPet(ev.name)
+function subscribeModules(targetBus, targetCombat, targetTracker, targetAttribution, targetEncounters, targetFarming) {
+  targetBus.subscribe((rawEv, live) => {
+    const ev = targetAttribution.process(rawEv)
+    if (ev.kind === 'petClaim' || ev.kind === 'petSay') targetCombat.claimPet(ev.name)
+    if (ev.entityType === 'charmed' && ev.name) targetCombat.claimPet(ev.name)
     targetCombat.onEvent(ev, live)
     targetTracker.onEvent(ev, live)
     targetEncounters.onEvent(ev, live)
@@ -70,9 +75,10 @@ function createWindow() {
   bus = new LogBus()
   combat = new CombatModule()
   tracker = new TrackerModule()
+  attribution = new AttributionModule()
   encounters = new EncounterEngine()
   farming = new FarmingModule()
-  subscribeModules(bus, combat, tracker, encounters, farming)
+  subscribeModules(bus, combat, tracker, attribution, encounters, farming)
 
   mainWindow = new BrowserWindow({
     width: 850,
@@ -156,7 +162,7 @@ ipcMain.handle('open-log-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
-ipcMain.handle('select-log-folder', async () => {
+ipcMain.handle('select-log-folder', async (_, folderPath) => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
   return result.canceled ? null : result.filePaths[0]
 })
@@ -173,126 +179,59 @@ ipcMain.handle('scan-log-files', async (_, folderPath) => {
 ipcMain.handle('scan-log-dates', async (_, folderPath) => {
   try {
     const files = fs.readdirSync(folderPath)
-    const eqlogs = files
       .filter(f => /eqlog.*\.(txt|log)$/i.test(f))
       .map(f => ({ file: path.join(folderPath, f), mtime: fs.statSync(path.join(folderPath, f)).mtimeMs }))
     const byDate = new Map()
-    for (const entry of eqlogs) {
-      const d = new Date(entry.mtime)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      const existing = byDate.get(key)
-      if (!existing || entry.mtime > existing.mtime) byDate.set(key, { date: key, filePath: entry.file, mtime: entry.mtime })
+    for (const entry of files) {
+      const key = new Date(entry.mtime).toISOString().slice(0, 10)
+      if (!byDate.has(key)) byDate.set(key, entry.file)
     }
-    return Array.from(byDate.values()).sort((a, b) => b.mtime - a.mtime)
+    return Array.from(byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   } catch { return [] }
 })
 
-ipcMain.handle('parse-log-for-date', async (_, filePath) => {
-  const tempCombat = new CombatModule()
-  const tempTracker = new TrackerModule()
-  const tempEncounters = new EncounterEngine()
-  const tempFarming = new FarmingModule()
-  const tempBus = new LogBus()
-  subscribeModules(tempBus, tempCombat, tempTracker, tempEncounters, tempFarming)
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const lines = content.split(/\r?\n/)
-    const nameMatch = path.basename(filePath).match(/^eqlog_([^_]+)_/i)
-    if (nameMatch) {
-      tempCombat.setPlayerName(nameMatch[1])
-      tempTracker.player = nameMatch[1]
-    }
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].trim()) continue
-      const ev = parseRawLine(lines[i], i + 1)
-      if (ev) tempBus.emit(ev, true)
-    }
-    tempEncounters.onTick(Date.now())
-    return {
-      ...tempCombat.snapshot(),
-      tracker: tempTracker.snapshot(),
-      encounters: tempEncounters.snapshot(),
-      farming: tempFarming.snapshot(),
-    }
-  } catch (err) {
-    return { error: err.message }
-  }
-})
-
-ipcMain.handle('read-log-file', async (_, filePath) => {
-  try { return fs.readFileSync(filePath, 'utf-8') }
-  catch (err) { throw new Error(`Failed to read file: ${err.message}`) }
-})
-
-ipcMain.handle('write-log-file', async (_, filePath, content) => {
-  try { fs.writeFileSync(filePath, content, 'utf-8'); return true }
-  catch (err) { throw new Error(`Failed to write file: ${err.message}`) }
-})
-
-ipcMain.handle('stat-log-file', async (_, filePath) => {
-  try {
-    const stat = fs.statSync(filePath)
-    return { size: stat.size, mtime: stat.mtimeMs }
-  } catch (err) { throw new Error(`Failed to stat file: ${err.message}`) }
-})
-
-ipcMain.handle('close-window', async () => app.quit())
-ipcMain.handle('minimize-window', async () => { if (mainWindow) mainWindow.minimize() })
-
 async function startParser(filePath) {
-  if (tailInterval) clearInterval(tailInterval)
-  combat.reset()
-  tracker.reset()
-  encounters.reset()
-  farming.reset()
-  seq = 0
+  if (parsing) return { ok: false, error: 'Parser already running' }
+  if (!filePath || !fs.existsSync(filePath)) return { ok: false, error: 'Log file not found' }
   parsing = true
   try {
+    if (tailInterval) clearInterval(tailInterval)
+    bus = new LogBus()
+    combat = new CombatModule()
+    tracker = new TrackerModule()
+    attribution = new AttributionModule()
+    encounters = new EncounterEngine()
+    farming = new FarmingModule()
+    subscribeModules(bus, combat, tracker, attribution, encounters, farming)
+    seq = 0
     const content = fs.readFileSync(filePath, 'utf-8')
-    const lines = content.split(/\r?\n/)
-    const nameMatch = path.basename(filePath).match(/^eqlog_([^_]+)_/i)
-    if (nameMatch) {
-      combat.setPlayerName(nameMatch[1])
-      tracker.player = nameMatch[1]
-    }
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+    for (const line of content.split(/\r?\n/)) {
       if (!line.trim()) continue
       const ev = parseRawLine(line, ++seq)
       if (ev) bus.emit(ev, false)
-      if (i % 5000 === 0) await new Promise(r => setImmediate(r))
     }
+    tailFile(filePath)
+    saveLastLogPath(filePath)
+    return { ok: true, filePath }
   } catch (err) {
-    parsing = false
     return { ok: false, error: err.message }
+  } finally {
+    parsing = false
   }
-  tailFile(filePath)
-  saveLastLogPath(filePath)
-  parsing = false
-  return { ok: true }
 }
 
-ipcMain.handle('parser-start', async (_, filePath) => startParser(filePath))
-
-ipcMain.handle('parser-stop', async () => {
+ipcMain.handle('start-parser', async (_, filePath) => startParser(filePath))
+ipcMain.handle('stop-parser', async () => {
   if (tailInterval) clearInterval(tailInterval)
   tailInterval = null
+  parsing = false
   return { ok: true }
 })
 
-ipcMain.handle('parser-snapshot', async () => {
-  encounters.onTick(Date.now())
-  return {
-    ...combat.snapshot(),
-    tracker: tracker.snapshot(),
-    encounters: encounters.snapshot(),
-    farming: farming.snapshot(),
-  }
-})
-
-ipcMain.handle('parser-loading', async () => ({ loading: parsing }))
-
-ipcMain.handle('set-meter-scope', async (_, scope) => {
-  combat.setMeterScope(scope)
-  return { ok: true }
-})
+ipcMain.handle('parser-snapshot', () => ({
+  parser: { running: !!tailInterval, logPath, sequence: seq },
+  combat: combat ? combat.snapshot() : null,
+  tracker: tracker ? tracker.snapshot() : null,
+  encounters: encounters ? encounters.snapshot() : null,
+  farming: farming ? farming.snapshot() : null,
+}))
