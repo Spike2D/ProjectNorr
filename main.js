@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 
 const { parseEvent } = require('./src/parser')
+const { enhanceEvent } = require('./src/parser-enhancements')
 const { LogBus } = require('./src/bus')
 const { CombatModule } = require('./src/combat')
 const { TrackerModule } = require('./src/tracker')
@@ -19,6 +20,18 @@ let tailInterval
 let logPath
 let seq = 0
 let parsing = false
+
+function parseLineEvent(line, sequence) {
+  const parsed = parseEvent(line, sequence)
+  return parsed ? enhanceEvent(parsed.text || '', parsed, sequence, parsed.ts, line) : null
+}
+
+function parseRawLine(line, sequence) {
+  const parsed = parseEvent(line, sequence)
+  if (!parsed) return null
+  const match = /^\[(.+?)\]\s?(.*)$/.exec(line)
+  return enhanceEvent(match ? match[2] : '', parsed, sequence, parsed.ts, line)
+}
 
 function getLastLogPath() {
   return path.join(app.getPath('userData'), 'last-log.json')
@@ -120,7 +133,7 @@ function tailFile(filePath) {
         buf = lines.pop()
         for (const line of lines) {
           if (!line.trim()) continue
-          const ev = parseEvent(line, ++seq)
+          const ev = parseRawLine(line, ++seq)
           if (ev) bus.emit(ev, true)
         }
       })
@@ -191,7 +204,7 @@ ipcMain.handle('parse-log-for-date', async (_, filePath) => {
     }
     for (let i = 0; i < lines.length; i++) {
       if (!lines[i].trim()) continue
-      const ev = parseEvent(lines[i], i + 1)
+      const ev = parseRawLine(lines[i], i + 1)
       if (ev) tempBus.emit(ev, true)
     }
     tempEncounters.onTick(Date.now())
@@ -245,7 +258,7 @@ async function startParser(filePath) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       if (!line.trim()) continue
-      const ev = parseEvent(line, ++seq)
+      const ev = parseRawLine(line, ++seq)
       if (ev) bus.emit(ev, false)
       if (i % 5000 === 0) await new Promise(r => setImmediate(r))
     }
