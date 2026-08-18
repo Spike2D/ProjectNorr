@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <title>Project Norr</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            eq: {
+              bg: '#0d0b0a',
+              panel: '#141210',
+              surface: '#1a1714',
+              gold: '#d9b25f',
+              goldDim: '#b8942f',
+              blue: '#6fb3d2',
+              green: '#5fbf72',
+              red: '#e0556a',
+              text: '#e8e6e3',
+              textDim: '#9a9590',
+              textMuted: '#6b6560',
+              border: '#2a2622',
+              hover: '#1f1c19',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      margin: 0;
+      background: #0d0b0a;
+      color: #e8e6e3;
+      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+    .app-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: block;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    .font-display {
+      font-family: 'Cinzel', 'Times New Roman', serif;
+    }
+    .sidebar-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      color: #9aa3b2;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid transparent;
+    }
+    .sidebar-tab:hover {
+      background: #1f1c19;
+      color: #e8e6e3;
+      border-color: #2a2622;
+    }
+    .sidebar-tab.active {
+      background: linear-gradient(180deg, rgba(217,178,95,0.12) 0%, rgba(217,178,95,0.04) 100%);
+      color: #d9b25f;
+      border-color: rgba(217,178,95,0.25);
+      box-shadow: inset 0 1px 0 rgba(217,178,95,0.1);
+    }
+    .subtab {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      color: #9aa3b2;
+      font-size: 10px;
+      font-weight: 500;
+      border: 1px solid transparent;
+      background: transparent;
+    }
+    .subtab:hover {
+      background: #1f1c19;
+      color: #e8e6e3;
+      border-color: #2a2622;
+    }
+    .subtab-active {
+      background: linear-gradient(180deg, rgba(217,178,95,0.12) 0%, rgba(217,178,95,0.04) 100%);
+      color: #d9b25f;
+      border-color: rgba(217,178,95,0.25);
+      box-shadow: inset 0 1px 0 rgba(217,178,95,0.1);
+    }
+    .panel {
+      background: linear-gradient(180deg, #141210 0%, #110f0d 100%);
+      border: 1px solid #2a2622;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .panel-hover:hover {
+      border-color: rgba(217,178,95,0.35);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(217,178,95,0.08);
+    }
+    .titlebar-btn {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.12s;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: #9a9590;
+      font-weight: 700;
+      line-height: 1;
+      -webkit-app-region: no-drag;
+    }
+    .titlebar-btn:hover { background: #3a3632; color: white; }
+    .titlebar-btn.close:hover { background: #e0556a; }
+    .titlebar {
+      background: linear-gradient(180deg, #1a1714 0%, #141210 100%);
+      border-bottom: 1px solid #2a2622;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.02);
+      -webkit-app-region: drag;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      box-shadow: 0 0 4px currentColor;
+    }
+    .btn-primary {
+      background: linear-gradient(180deg, #d9b25f 0%, #b8942f 100%);
+      color: #0d0b0a;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(217,178,95,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 2px 8px rgba(217,178,95,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-danger {
+      background: linear-gradient(180deg, #e0556a 0%, #c04050 100%);
+      color: white;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(224,85,106,0.25);
+    }
+    .btn-danger:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 2px 8px rgba(224,85,106,0.35);
+    }
+    .progress-bar {
+      background: #1f1c19;
+      border-radius: 3px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.15);
+    }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2622; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3632; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const COMBAT_SUB_TABS = [
+      { id: 'encounters', label: 'Encounters', icon: 'icons/encounters.svg' },
+      { id: 'dpsMeter', label: 'DPS Meter', icon: 'icons/dps.svg' },
+      { id: 'dpsSummary', label: 'DPS Summary', icon: 'icons/dps.svg' },
+      { id: 'fightLog', label: 'Fight Log', icon: 'icons/encounters.svg' },
+      { id: 'procs', label: 'Procs', icon: 'icons/procs.svg' },
+    ];
+
+    const TABS = [
+      { id: 'combat', label: 'Combat', icon: 'icons/dps.svg' },
+      { id: 'settings', label: 'Settings', icon: 'icons/settings.svg' },
+    ];
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('combat');
+      const [combatTab, setCombatTab] = useState('encounters');
+      const [selectedEncounter, setSelectedEncounter] = useState(null);
+      const [isLive, setIsLive] = useState(false);
+      const [snapshot, setSnapshot] = useState({ encounters: [], current: null, seq: 0 });
+      const [logPath, setLogPath] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [meterDrill, setMeterDrill] = useState(null);
+      const [meterScope, setMeterScope] = useState('everyone');
+
+      const [fightLogFolder, setFightLogFolder] = useState('');
+      const [fightLogDates, setFightLogDates] = useState([]);
+      const [fightLogSelectedDate, setFightLogSelectedDate] = useState(null);
+      const [fightLogEncounters, setFightLogEncounters] = useState([]);
+      const [fightLogSelectedEncounter, setFightLogSelectedEncounter] = useState(null);
+      const [fightLogLoading, setFightLogLoading] = useState(false);
+      const [fightLogError, setFightLogError] = useState('');
+
+      useEffect(() => {
+        window.electronAPI.setMeterScope(meterScope)
+      }, [meterScope])
+
+      async function loadFightLogFolder() {
+        setFightLogError('')
+        const folder = await window.electronAPI.selectLogFolder()
+        if (!folder) return
+        setFightLogFolder(folder)
+        const dates = await window.electronAPI.scanLogDates(folder)
+        setFightLogDates(dates)
+        setFightLogSelectedDate(null)
+        setFightLogEncounters([])
+        setFightLogSelectedEncounter(null)
+      }
+
+      async function loadFightLogDate(dateObj) {
+        setFightLogLoading(true)
+        setFightLogError('')
+        setFightLogSelectedDate(dateObj)
+        setFightLogSelectedEncounter(null)
+        try {
+          const result = await window.electronAPI.parseLogForDate(dateObj.filePath)
+          if (result && result.error) {
+            setFightLogError(result.error)
+            setFightLogEncounters([])
+          } else {
+            setFightLogEncounters(result.encounters || [])
+          }
+        } catch (err) {
+          setFightLogError(err.message)
+          setFightLogEncounters([])
+        }
+        setFightLogLoading(false)
+      }
+
+      function formatDateLabel(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00')
+        return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+      }
+
+      function formatRate(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+        return String(n)
+      }
+
+      function formatNum(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+        return String(n)
+      }
+
+      useEffect(() => {
+        let alive = true
+        const tick = async () => {
+          if (!isLive) return
+          try {
+            const s = await window.electronAPI.parserSnapshot()
+            if (alive) setSnapshot(s)
+          } catch (e) {
+            console.error(e)
+          }
+        }
+        const id = setInterval(tick, 500)
+        return () => { alive = false; clearInterval(id) }
+      }, [isLive])
+
+      useEffect(() => {
+        const unsubscribe = window.electronAPI.onParserAutoStarted(() => {
+          setIsLive(true)
+        })
+        return unsubscribe
+      }, [])
+
+      const handlePickFile = async () => {
+        setError('')
+        const p = await window.electronAPI.openLogFile()
+        if (!p) return
+        setLogPath(p)
+        setLoading(true)
+        const res = await window.electronAPI.parserStart(p)
+        setLoading(false)
+        if (res && !res.ok) {
+          setError(res.error)
+          return
+        }
+        setIsLive(true)
+      }
+
+      const handleStartStop = async () => {
+        if (isLive) {
+          await window.electronAPI.parserStop()
+          setIsLive(false)
+        } else {
+          await handlePickFile()
+        }
+      }
+
+      const encounters = snapshot.encounters || []
+      const current = snapshot.current
+
+      const selected = selectedEncounter || current
+
+      const renderCombatContent = () => {
+        switch (combatTab) {
+          case 'encounters':
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center justify-end mb-2">
+                  <button
+                    onClick={handleStartStop}
+                    disabled={loading}
+                    className={`px-2 py-1 rounded text-[10px] font-semibold transition-all flex items-center gap-1 ${
+                      isLive ? 'btn-danger' : 'btn-primary'
+                    } ${loading ? 'opacity-70 cursor-wait' : ''}`}
+                  >
+                    {isLive ? (
+                      <>
+                        <img src="icons/stop.svg" width="8" height="8" alt="" />
+                        Stop
+                      </>
+                    ) : loading ? (
+                      <>
+                        <span className="status-dot bg-eq-gold" style={{ color: '#d9b25f', animation: 'pulse 1s infinite' }} />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <img src="icons/play.svg" width="8" height="8" alt="" />
+                        Select Log & Start
+                      </>
+                    )}
+                  </button>
+                </div>
+                {error && <div className="text-[10px] text-eq-red">{error}</div>}
+                {loading && (
+                  <div className="panel p-4 text-center text-eq-gold text-[11px]">
+                    Parsing log file... this may take a moment.
+                  </div>
+                )}
+                {!isLive && !loading && encounters.length === 0 && (
+                  <div className="panel p-4 text-center text-eq-textDim text-[11px]">
+                    Press <strong className="text-eq-gold">Select Log & Start</strong> to choose an EQ log file and begin parsing.
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  {encounters.map(enc => (
+                    <div
+                      key={enc.id}
+                      onClick={() => setSelectedEncounter(enc)}
+                      className={`panel p-2 cursor-pointer transition-all panel-hover ${
+                        selected?.id === enc.id ? 'border-eq-gold/40 bg-eq-gold/5' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-eq-text text-[11px]">
+                          {enc.zone && enc.target ? `${enc.zone} — ${enc.target}` : enc.zone || enc.target || enc.name}
+                        </span>
+                        <span className={`text-[9px] px-1 py-0.5 rounded font-medium flex items-center gap-1 ${
+                          enc.status === 'active' ? 'bg-eq-green/20 text-eq-green' : 'bg-eq-textMuted/20 text-eq-textMuted'
+                        }`}>
+                          {enc.status === 'active' ? (
+                            <span className="status-dot bg-eq-green" style={{ color: '#5fbf72' }} />
+                          ) : (
+                            <img src="icons/check.svg" width="8" height="8" alt="" />
+                          )}
+                          {enc.status === 'active' ? 'Live' : 'Done'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-[10px]">
+                        <div>
+                          <div className="text-eq-textDim">Duration</div>
+                          <div className="text-eq-gold font-mono font-semibold">{enc.duration}</div>
+                        </div>
+                        <div>
+                          <div className="text-eq-textDim">Damage</div>
+                          <div className="text-eq-red font-mono font-semibold">{enc.damage.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-eq-textDim">Max Hit</div>
+                          <div className="text-eq-blue font-mono font-semibold">{enc.maxHit.toLocaleString()}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {selected && (
+                  <div className="panel p-3 mt-2">
+                    <div className="text-[11px] font-display font-semibold text-eq-gold mb-2">
+                      {selected.zone && selected.target ? `${selected.zone} — ${selected.target}` : selected.name} — Details
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[10px]">
+                      {selected.zone && (
+                        <div>
+                          <div className="text-eq-textDim">Zone</div>
+                          <div className="text-eq-text font-mono font-semibold">{selected.zone}</div>
+                        </div>
+                      )}
+                      {selected.target && (
+                        <div>
+                          <div className="text-eq-textDim">Target</div>
+                          <div className="text-eq-text font-mono font-semibold">{selected.target}</div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-eq-textDim">Damage</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.damage || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Duration</div>
+                        <div className="text-eq-gold font-mono font-semibold">{selected.duration}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Hits</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.hits || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Max Hit</div>
+                        <div className="text-eq-blue font-mono font-semibold">{(selected.maxHit || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Misses</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.misses || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Resists</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.resists || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Healing</div>
+                        <div className="text-eq-green font-mono font-semibold">{(selected.healing || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Rune Absorbed</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.runes || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Casts</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.casts || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Fizzles</div>
+                        <div className="text-eq-red font-mono font-semibold">{(selected.fizzles || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Interrupts</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.interrupts || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Merges</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.merges || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Merge Fails</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.mergeFails || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Poison Coats</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.poisonCoats || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Poison Drys</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.poisonDrys || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">AA Potions</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.aaPotions || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">AA Activations</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.aaActivations || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Levels</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.levels || 0).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-eq-textDim">Exp Gains</div>
+                        <div className="text-eq-text font-mono font-semibold">{(selected.expGains || 0).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+
+          case 'dpsMeter': {
+            const outgoingAll = (snapshot.outgoing || [])
+            const outgoing = outgoingAll.filter(e => e.kind === 'you' || e.kind === 'pet')
+            const incoming = (snapshot.incoming || [])
+            const topOutDps = outgoing.length > 0 ? outgoing[0].dps : 0
+            const topInDps = incoming.length > 0 ? incoming[0].dps : 0
+            const drilled = meterDrill ? outgoing.find(e => e.name === meterDrill) || incoming.find(e => e.name === meterDrill) : null
+            const showSkills = drilled && drilled.skills && drilled.skills.length > 0
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMeterScope(meterScope === 'you' ? 'everyone' : 'you')}
+                    className={`px-2 py-1 rounded text-[10px] font-semibold transition-all ${
+                      meterScope === 'you' ? 'btn-primary' : 'text-eq-textMuted hover:text-eq-text'
+                    }`}
+                  >
+                    {meterScope === 'you' ? 'Track: You' : 'Track: Everyone'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="panel p-3">
+                    <div className="text-[11px] font-display font-semibold text-eq-gold mb-2">Players + Pets</div>
+                    {outgoing.length === 0 && (
+                      <div className="text-[11px] text-eq-textDim text-center py-3">No outgoing damage yet</div>
+                    )}
+                    <div className="space-y-1 max-h-80 overflow-y-auto">
+                      {outgoing.map((ent, idx) => {
+                        const isYou = ent.kind === 'you'
+                        const barWidth = topOutDps > 0 ? (ent.dps / topOutDps) * 100 : 0
+                        return (
+                          <div
+                            key={ent.name}
+                            onClick={() => setMeterDrill(ent.name)}
+                            className="flex items-center gap-2 cursor-pointer"
+                            style={{ height: 18, position: 'relative', borderRadius: 3, marginBottom: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}
+                          >
+                            <div style={{ position: 'absolute', inset: 0, width: `${Math.max(2, barWidth)}%`, background: isYou ? '#d9b25f' : '#6fb3d2', opacity: 0.55 }} />
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', padding: '0 6px', gap: 6, fontSize: 11, lineHeight: 1, textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.55)', width: 12, textAlign: 'right' }}>{idx + 1}</span>
+                              <span style={{ fontWeight: 600, flexGrow: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: isYou ? '#d9b25f' : '#e8e6e3' }}>
+                                {isYou ? 'You' : ent.name}
+                              </span>
+                              <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#e8e6e3' }}>
+                                {formatRate(ent.dps)} <span style={{ opacity: 0.7 }}>· {formatNum(ent.damage)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="panel p-3">
+                    <div className="text-[11px] font-display font-semibold text-eq-red mb-2">Monster Damage</div>
+                    {incoming.length === 0 && (
+                      <div className="text-[11px] text-eq-textDim text-center py-3">No incoming damage yet</div>
+                    )}
+                    <div className="space-y-1 max-h-80 overflow-y-auto">
+                      {incoming.map((ent, idx) => {
+                        const barWidth = topInDps > 0 ? (ent.dps / topInDps) * 100 : 0
+                        return (
+                          <div
+                            key={ent.name}
+                            onClick={() => setMeterDrill(ent.name)}
+                            className="flex items-center gap-2 cursor-pointer"
+                            style={{ height: 18, position: 'relative', borderRadius: 3, marginBottom: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}
+                          >
+                            <div style={{ position: 'absolute', inset: 0, width: `${Math.max(2, barWidth)}%`, background: '#cf6679', opacity: 0.55 }} />
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', padding: '0 6px', gap: 6, fontSize: 11, lineHeight: 1, textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.55)', width: 12, textAlign: 'right' }}>{idx + 1}</span>
+                              <span style={{ fontWeight: 600, flexGrow: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e8e6e3' }}>
+                                {ent.name}
+                              </span>
+                              <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#e8e6e3' }}>
+                                {formatRate(ent.dps)} <span style={{ opacity: 0.7 }}>· {formatNum(ent.damage)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+                {showSkills && (
+                  <div className="panel p-3 mt-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <button onClick={() => setMeterDrill(null)} className="text-[10px] text-eq-textMuted hover:text-eq-text">‹ Back</button>
+                      <span className="text-[11px] font-semibold text-eq-gold">{drilled.name}</span>
+                    </div>
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {drilled.skills.map(skill => {
+                        const catColor = skill.category === 'spell' ? '#a98fe0' : skill.category === 'dot' ? '#6fb3d2' : '#d9b25f'
+                        const barWidth = drilled.damage > 0 ? (skill.damage / drilled.damage) * 100 : 0
+                        return (
+                          <div key={skill.name} className="flex items-center gap-2" style={{ height: 18, position: 'relative', borderRadius: 3, marginBottom: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
+                            <div style={{ position: 'absolute', inset: 0, width: `${Math.max(2, barWidth)}%`, background: catColor, opacity: 0.55 }} />
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', padding: '0 6px', gap: 6, fontSize: 11, lineHeight: 1, textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
+                              <span style={{ flexGrow: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e8e6e3' }}>
+                                {skill.name}
+                              </span>
+                              <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#e8e6e3' }}>
+                                {formatRate(Math.floor(skill.damage / Math.max(1, (Date.now() - (current ? current.startTs : Date.now())) / 1000)))} <span style={{ opacity: 0.7 }}>· {formatNum(skill.damage)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          case 'dpsSummary': {
+            const allRows = (snapshot.outgoing || [])
+              .filter(e => e.kind === 'you' || e.kind === 'pet')
+              .map(e => ({ ...e, dir: 'out' }))
+            const total = snapshot.totalOut || allRows.reduce((s, e) => s + e.damage, 0)
+            const bestSec = snapshot.bestSec || 0
+            return (
+              <div className="space-y-3">
+                <div className="panel p-3">
+                  <div className="text-[11px] font-display font-semibold text-eq-gold mb-2">DPS Summary</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[10px]">
+                      <thead>
+                        <tr className="text-eq-textMuted border-b border-eq-border">
+                          <th className="text-left py-1 px-1 font-medium">Source</th>
+                          <th className="text-right py-1 px-1 font-medium">Total %</th>
+                          <th className="text-right py-1 px-1 font-medium">Damage</th>
+                          <th className="text-right py-1 px-1 font-medium">DPS</th>
+                          <th className="text-right py-1 px-1 font-medium">SDPS</th>
+                          <th className="text-right py-1 px-1 font-medium">Sec</th>
+                          <th className="text-right py-1 px-1 font-medium">#Hits</th>
+                          <th className="text-right py-1 px-1 font-medium">Max hits</th>
+                          <th className="text-right py-1 px-1 font-medium">Best Sec</th>
+                          <th className="text-right py-1 px-1 font-medium">Av Hit</th>
+                          <th className="text-right py-1 px-1 font-medium">Av Crit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allRows.map((ent, idx) => {
+                          const pct = total > 0 ? ((ent.damage / total) * 100).toFixed(1) : '0.0'
+                          const isYou = ent.kind === 'you'
+                          const rowColor = ent.dir === 'out' ? (isYou ? 'text-eq-gold' : 'text-eq-blue') : 'text-eq-red'
+                          return (
+                            <tr key={`${ent.dir}-${ent.name}`} className={`border-b border-eq-border/50 ${idx % 2 === 0 ? 'bg-eq-bg/50' : ''}`}>
+                              <td className={`py-1 px-1 font-medium ${rowColor}`}>
+                                {ent.dir === 'out' ? (isYou ? 'You' : ent.name) : ent.name}
+                              </td>
+                              <td className="text-right py-1 px-1 text-eq-textDim">{pct}%</td>
+                              <td className="text-right py-1 px-1 font-mono">{formatNum(ent.damage)}</td>
+                              <td className="text-right py-1 px-1 font-mono">{formatRate(ent.dps)}</td>
+                              <td className="text-right py-1 px-1 font-mono">{formatRate(ent.sdps)}</td>
+                              <td className="text-right py-1 px-1 font-mono">{snapshot.activeSecs ? snapshot.activeSecs.toFixed(1) : '—'}</td>
+                              <td className="text-right py-1 px-1 font-mono">{ent.hits}</td>
+                              <td className="text-right py-1 px-1 font-mono">{ent.maxHit}</td>
+                              <td className="text-right py-1 px-1 font-mono">{bestSec > 0 ? formatNum(bestSec) : '—'}</td>
+                              <td className="text-right py-1 px-1 font-mono">{ent.avgHit || 0}</td>
+                              <td className="text-right py-1 px-1 font-mono">{ent.avgCrit || 0}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          case 'fightLog':
+            return (
+              <div className="space-y-3">
+                <div className="panel p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] font-display font-semibold text-eq-gold">Fight Log</div>
+                    <button
+                      onClick={loadFightLogFolder}
+                      className={`px-2 py-1 rounded text-[10px] font-semibold transition-all flex items-center gap-1 ${
+                        fightLogFolder ? 'btn-primary' : 'text-eq-textMuted hover:text-eq-text'
+                      }`}
+                    >
+                      {fightLogFolder ? 'Change Folder' : 'Select Log Folder'}
+                    </button>
+                  </div>
+                  {fightLogError && <div className="text-[10px] text-eq-red mb-2">{fightLogError}</div>}
+                  {fightLogFolder && fightLogDates.length === 0 && !fightLogLoading && (
+                    <div className="text-[11px] text-eq-textDim text-center py-3">No eqlog files found in this folder</div>
+                  )}
+                  {fightLogDates.length > 0 && (
+                    <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+                      {fightLogDates.map(d => (
+                        <button
+                          key={d.date}
+                          onClick={() => loadFightLogDate(d)}
+                          className={`px-2 py-1 rounded text-[10px] font-semibold transition-all flex-shrink-0 ${
+                            fightLogSelectedDate && fightLogSelectedDate.date === d.date
+                              ? 'btn-primary'
+                              : 'text-eq-textMuted hover:text-eq-text border border-eq-border'
+                          }`}
+                        >
+                          {formatDateLabel(d.date)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {fightLogLoading && (
+                    <div className="text-[11px] text-eq-gold text-center py-3">Parsing log file...</div>
+                  )}
+                  {!fightLogLoading && fightLogSelectedDate && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                        {fightLogEncounters.map(enc => (
+                          <div
+                            key={enc.id}
+                            onClick={() => setFightLogSelectedEncounter(enc)}
+                            className={`panel p-2 cursor-pointer transition-all panel-hover ${
+                              fightLogSelectedEncounter && fightLogSelectedEncounter.id === enc.id ? 'border-eq-gold/40 bg-eq-gold/5' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-eq-text text-[11px]">
+                                {enc.zone && enc.target ? `${enc.zone} — ${enc.target}` : enc.zone || enc.target || enc.name}
+                              </span>
+                              <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
+                                enc.status === 'active' ? 'bg-eq-green/20 text-eq-green' : 'bg-eq-textMuted/20 text-eq-textMuted'
+                              }`}>
+                                {enc.status === 'active' ? 'Live' : 'Done'}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-[10px]">
+                              <div>
+                                <div className="text-eq-textDim">Duration</div>
+                                <div className="text-eq-gold font-mono font-semibold">{enc.duration}</div>
+                              </div>
+                              <div>
+                                <div className="text-eq-textDim">Damage</div>
+                                <div className="text-eq-red font-mono font-semibold">{enc.damage.toLocaleString()}</div>
+                              </div>
+                              <div>
+                                <div className="text-eq-textDim">Max Hit</div>
+                                <div className="text-eq-blue font-mono font-semibold">{enc.maxHit.toLocaleString()}</div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {fightLogEncounters.length === 0 && (
+                          <div className="text-[10px] text-eq-textDim text-center py-2">No encounters in this log</div>
+                        )}
+                      </div>
+                      <div className="panel p-3 max-h-96 overflow-y-auto">
+                        {fightLogSelectedEncounter ? (
+                          <div>
+                            <div className="text-[11px] font-display font-semibold text-eq-gold mb-2">
+                              {fightLogSelectedEncounter.zone && fightLogSelectedEncounter.target ? `${fightLogSelectedEncounter.zone} — ${fightLogSelectedEncounter.target}` : fightLogSelectedEncounter.name} — Events
+                            </div>
+                            <div className="space-y-1">
+                              {fightLogSelectedEncounter.events && fightLogSelectedEncounter.events.map((evt, idx) => {
+                                const time = new Date(evt.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                                let label = evt.label
+                                let detail = ''
+                                let color = '#9a9590'
+                                switch (evt.kind) {
+                                  case 'damage':
+                                    label = `${evt.attacker || '?'} → ${evt.target || '?'}`
+                                    detail = `${(evt.amount || 0).toLocaleString()}${evt.skill ? ` (${evt.skill})` : ''}${evt.crit ? ' CRIT' : ''}`
+                                    color = evt.attacker === 'You' || evt.attacker === 'you' ? '#d9b25f' : '#cf6679'
+                                    break
+                                  case 'heal':
+                                    label = `${evt.healer || '?'} heals ${evt.target || '?'}`
+                                    detail = `${(evt.amount || 0).toLocaleString()}`
+                                    color = '#5fbf72'
+                                    break
+                                  case 'death':
+                                    label = `${evt.target || '?'} dies`
+                                    color = '#e0556a'
+                                    break
+                                  case 'playerDeath':
+                                    label = 'You die'
+                                    color = '#e0556a'
+                                    break
+                                  case 'miss':
+                                    label = `${evt.attacker || '?'} misses ${evt.target || '?'}`
+                                    detail = evt.mtype ? `(${evt.mtype}${evt.verb ? ` ${evt.verb}` : ''})` : ''
+                                    color = '#6fb3d2'
+                                    break
+                                  case 'resist':
+                                    label = `${evt.caster || '?'} resists ${evt.spell || 'spell'}`
+                                    color = '#a98fe0'
+                                    break
+                                  case 'mitigation':
+                                    if (evt.mtype === 'rune') {
+                                      label = `Rune absorbs ${evt.amount || 0}`
+                                      detail = `${evt.attacker || '?'} → ${evt.target || '?'}`
+                                    } else {
+                                      label = `${evt.mtype || 'mitigation'}`
+                                    }
+                                    color = '#d9b25f'
+                                    break
+                                  case 'castBegin':
+                                    label = `Cast: ${evt.skill || 'unknown'}`
+                                    color = '#9a9590'
+                                    break
+                                  case 'castFizzle':
+                                    label = `Fizzle: ${evt.skill || 'unknown'}`
+                                    color = '#cf6679'
+                                    break
+                                  case 'castInterrupted':
+                                    label = `Interrupted: ${evt.skill || 'unknown'}`
+                                    color = '#cf6679'
+                                    break
+                                  case 'poisonCoat':
+                                    label = 'Poison coat'
+                                    color = '#5fbf72'
+                                    break
+                                  case 'poisonDry':
+                                    label = 'Poison dries'
+                                    color = '#5fbf72'
+                                    break
+                                  case 'aaPotion':
+                                    label = 'AA Potion'
+                                    color = '#a98fe0'
+                                    break
+                                  case 'aaActivate':
+                                    label = 'AA Activate'
+                                    color = '#a98fe0'
+                                    break
+                                  case 'itemMerge':
+                                    label = `Merge: ${evt.item || 'item'}`
+                                    color = '#5fbf72'
+                                    break
+                                  case 'itemMergeFailed':
+                                    label = `Merge failed: ${evt.reason || 'unknown'}`
+                                    color = '#cf6679'
+                                    break
+                                  case 'level':
+                                    label = 'Level up!'
+                                    color = '#d9b25f'
+                                    break
+                                  case 'expGain':
+                                    label = 'Experience gain'
+                                    color = '#9a9590'
+                                    break
+                                  default:
+                                    label = evt.kind
+                                }
+                                return (
+                                  <div key={evt.seq || idx} className="flex items-start gap-2 text-[10px] py-1 border-b border-eq-border/50">
+                                    <span className="text-eq-textMuted font-mono flex-shrink-0 w-16">{time}</span>
+                                    <span className="w-2 h-2 rounded-full flex-shrink-0 mt-0.5" style={{ background: color }} />
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-eq-text font-medium">{label}</span>
+                                      {detail && <span className="text-eq-textMuted ml-1">{detail}</span>}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-eq-textDim text-center py-3">
+                            Select an encounter to view events
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+
+          case 'procs':
+            const procs = (snapshot.procs || []).slice(-100).reverse()
+            const procColor = {
+              parry: '#6fb3d2', dodge: '#6fb3d2', riposte: '#6fb3d2', block: '#6fb3d2',
+              resist: '#a98fe0',
+              rune: '#d9b25f', absorbSwing: '#d9b25f', absorbDamageShield: '#d9b25f',
+              fizzle: '#cf6679', interrupt: '#cf6679',
+              poisonCoat: '#5fbf72', poisonDry: '#5fbf72',
+              merge: '#5fbf72', mergeFail: '#cf6679',
+              aaPotion: '#a98fe0', aaActivate: '#a98fe0',
+            }
+            return (
+              <div className="space-y-3">
+                <div className="panel p-3">
+                  <div className="text-[11px] font-display font-semibold text-eq-gold mb-2">Procs</div>
+                  {procs.length === 0 && (
+                    <div className="text-[11px] text-eq-textDim text-center py-3">No procs recorded yet</div>
+                  )}
+                  <div className="space-y-1 max-h-96 overflow-y-auto">
+                    {procs.map((p, idx) => {
+                      const color = procColor[p.kind] || '#9a9590'
+                      return (
+                        <div key={p.seq || idx} className="flex items-center gap-2 text-[10px] py-1 border-b border-eq-border/50">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                          <span className="font-medium text-eq-text w-24 truncate">{p.label}</span>
+                          {p.detail && <span className="text-eq-textMuted truncate">{p.detail}</span>}
+                          <span className="ml-auto text-eq-textMuted font-mono flex-shrink-0">
+                            {new Date(p.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+        }
+      }
+
+      const renderContent = () => {
+        switch (activeTab) {
+          case 'combat':
+            return (
+              <div className="space-y-2">
+                 <div className="flex items-center gap-2 pb-2 border-b border-eq-border">
+                  {COMBAT_SUB_TABS.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setCombatTab(tab.id)}
+                      className={`subtab flex items-center gap-1 ${
+                        combatTab === tab.id ? 'subtab-active' : ''
+                      }`}
+                    >
+                      <img src={tab.icon} width="12" height="12" alt="" />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                {renderCombatContent()}
+              </div>
+            );
+
+          case 'settings':
+            return (
+              <div className="space-y-3">
+                <h2 className="text-xs font-display font-semibold text-eq-gold flex items-center gap-1">
+                  <img src="icons/settings.svg" width="12" height="12" alt="" />
+                  Settings
+                </h2>
+                <div className="panel p-4 text-center text-eq-textDim text-[11px]">
+                  Settings coming soon...
+                </div>
+              </div>
+            );
+
+          default:
+            return null;
+        }
+      };
+
+      return (
+        <div className="h-screen flex flex-col">
+          {/* Titlebar */}
+          <div className="titlebar h-8 flex items-center justify-between px-2.5 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <img src="icon.svg" className="app-icon" alt="PN" />
+              <span className="text-[11px] font-display font-semibold text-eq-text tracking-wide">Project Norr</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 mr-2">
+                <div className={`status-dot ${isLive ? 'bg-eq-green' : 'bg-eq-textMuted'}`}
+                     style={{ color: isLive ? '#5fbf72' : '#6b7280' }} />
+                <span className="text-[10px] text-eq-textDim font-medium">{isLive ? 'Live' : 'Idle'}</span>
+              </div>
+              {current && (
+                <span className="text-[10px] text-eq-gold font-medium truncate max-w-[180px]">
+                  <img src="icons/encounters.svg" width="12" height="12" alt="" style={{display:'inline',verticalAlign:'middle',marginRight:'3px'}} />
+                  {current.name}
+                </span>
+              )}
+              <button onClick={() => window.electronAPI?.minimizeWindow()} className="titlebar-btn" title="Minimize">—</button>
+              <button onClick={() => window.electronAPI?.closeWindow()} className="titlebar-btn close" title="Close">✕</button>
+            </div>
+          </div>
+
+          {/* Main */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* Sidebar */}
+            <div className="w-36 bg-eq-panel border-r border-eq-border p-2 flex flex-col gap-0.5 flex-shrink-0">
+              {TABS.map(tab => (
+                <div
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`sidebar-tab ${activeTab === tab.id ? 'active' : ''}`}
+                >
+                  <img src={tab.icon} width="16" height="16" alt="" style={{display:'block'}} />
+                  <span>{tab.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-3">
+              {renderContent()}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
