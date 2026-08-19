@@ -43,7 +43,7 @@ class EncounterEngine {
   _new(ts, target) {
     const enc = { id: `${ts}-${this.seq}`, startTs: ts, endTs: null, durationMs: 0,
       durationSeconds: 0, zone: this.lastZone, target: target || null, status: 'active',
-      damage: 0, hits: 0, misses: 0, resists: 0, healing: 0, deaths: 0, events: 0,
+      damage: 0, maxHit: 0, hits: 0, misses: 0, resists: 0, healing: 0, deaths: 0, events: 0,
       attackers: new Map(), targets: new Map(), targetLastTs: new Map(), endReason: null }
     this.current = enc
     this.encounters.unshift(enc)
@@ -137,8 +137,6 @@ class EncounterEngine {
     const ts = Number.isFinite(value) ? value : Date.now()
     const target = this._combatTarget(ev)
 
-    // A late DoT tick after a confirmed death belongs to the completed fight and
-    // must never resurrect the dead target as a new encounter.
     if (target && this._isRecentlyDead(target, ts)) return
 
     if (this._shouldSplit(ts, target)) this._finish(ts, 'target-switch')
@@ -147,7 +145,11 @@ class EncounterEngine {
 
     if (ev.kind === 'damage') {
       const amount = Number(ev.amount)
-      if (Number.isFinite(amount) && amount >= 0) { enc.damage += amount; enc.hits += 1 }
+      if (Number.isFinite(amount) && amount >= 0) {
+        enc.damage += amount
+        enc.maxHit = Math.max(enc.maxHit || 0, amount)
+        enc.hits += 1
+      }
     } else if (ev.kind === 'miss') enc.misses += 1
     else if (ev.kind === 'resist') enc.resists += 1
     this.lastCombatTs = ts
@@ -167,8 +169,8 @@ class EncounterEngine {
       return { id: enc.id, startTs: enc.startTs, endTs: enc.endTs, durationMs,
         durationSeconds: Number(seconds.toFixed(2)), zone: enc.zone, target: enc.target,
         status: enc.status, endReason: enc.endReason || null, damage: enc.damage,
-        dps: Number((seconds > 0 ? enc.damage / seconds : 0).toFixed(2)), hits: enc.hits,
-        misses: enc.misses, resists: enc.resists, healing: enc.healing, deaths: enc.deaths,
+        dps: Number((seconds > 0 ? enc.damage / seconds : 0).toFixed(2)), maxHit: enc.maxHit || 0,
+        hits: enc.hits, misses: enc.misses, resists: enc.resists, healing: enc.healing, deaths: enc.deaths,
         events: enc.events, attackers: Array.from(enc.attackers.entries()).map(([name,count])=>({name,count})),
         targets: Array.from(enc.targets.entries()).map(([name,count])=>({name,count})) }
     })
