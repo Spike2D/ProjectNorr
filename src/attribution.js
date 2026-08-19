@@ -7,19 +7,22 @@ class AttributionModule {
   reset() {
     this.pets = new Map()
     this.charmed = new Map()
+    this.pendingOwners = new Map()
   }
 
   _key(name) { return String(name || '').trim().toLowerCase() }
 
-  _rememberPet(name, owner = 'You', type = 'pet', ts = 0) {
+  _remember(name, owner = 'You', type = 'pet', ts = 0) {
     if (!name) return
-    this.pets.set(this._key(name), { name: String(name).trim(), owner: owner || 'You', type, claimedAt: ts })
+    const clean = String(name).trim()
+    this.pets.set(this._key(clean), { name: clean, owner: owner || 'You', type, claimedAt: ts })
   }
 
   _remove(name) {
     const key = this._key(name)
     this.pets.delete(key)
     this.charmed.delete(key)
+    this.pendingOwners.delete(key)
   }
 
   _decorate(ev, info) {
@@ -29,7 +32,17 @@ class AttributionModule {
       attribution: { owner: info.owner, kind: info.type, entity: info.name },
       owner: info.owner,
       entityType: info.type,
+      entity: info.name,
     }
+  }
+
+  _lookup(name) {
+    const key = this._key(name)
+    return this.pets.get(key) || (this.charmed.has(key) ? {
+      name: name,
+      owner: this.charmed.get(key),
+      type: 'charmed',
+    } : null)
   }
 
   process(ev) {
@@ -45,18 +58,25 @@ class AttributionModule {
         this.reset()
         return ev
       case 'petClaim':
-        this._rememberPet(ev.name, 'You', 'pet', ev.ts)
+        this._remember(ev.name, 'You', 'pet', ev.ts)
         return this._decorate(ev, { name: ev.name, owner: 'You', type: 'pet' })
       case 'allyPetLeader':
-        this._rememberPet(ev.pet, ev.owner, 'pet', ev.ts)
+        this._remember(ev.pet, ev.owner, 'pet', ev.ts)
         return this._decorate(ev, { name: ev.pet, owner: ev.owner, type: 'pet' })
       case 'petSay':
-        if (ev.name) this._rememberPet(ev.name, 'You', 'pet', ev.ts)
-        return this._decorate(ev, { name: ev.name, owner: 'You', type: 'pet' })
+        if (ev.name) {
+          const owner = ev.owner || 'You'
+          this._remember(ev.name, owner, 'pet', ev.ts)
+          return this._decorate(ev, { name: ev.name, owner, type: 'pet' })
+        }
+        return ev
       case 'charm':
-        this.charmed.set(this._key(ev.mob), 'You')
-        this._rememberPet(ev.mob, 'You', 'charmed', ev.ts)
-        return this._decorate(ev, { name: ev.mob, owner: 'You', type: 'charmed' })
+        if (ev.mob) {
+          this.charmed.set(this._key(ev.mob), 'You')
+          this._remember(ev.mob, 'You', 'charmed', ev.ts)
+          return this._decorate(ev, { name: ev.mob, owner: 'You', type: 'charmed' })
+        }
+        return ev
       case 'uncharm':
         this._remove(ev.mob)
         return ev
@@ -66,20 +86,20 @@ class AttributionModule {
         break
     }
 
-    if (ev.attacker) {
-      const info = this.pets.get(this._key(ev.attacker))
-      if (info) return this._decorate(ev, info)
-      const charmOwner = this.charmed.get(this._key(ev.attacker))
-      if (charmOwner) return this._decorate(ev, { name: ev.attacker, owner: charmOwner, type: 'charmed' })
-    }
-    if (ev.healer) {
-      const info = this.pets.get(this._key(ev.healer))
+    // Owner attribution is intentionally applied to every producer field,
+    // not just melee attackers. This covers pet spells, DoTs, HoTs and procs.
+    for (const field of ['attacker', 'healer', 'caster', 'source']) {
+      if (!ev[field]) continue
+      const info = this._lookup(ev[field])
       if (info) return this._decorate(ev, info)
     }
-    if (ev.caster) {
-      const info = this.pets.get(this._key(ev.caster))
+
+    // Some event shapes expose the producing entity as `from`.
+    if (ev.from) {
+      const info = this._lookup(ev.from)
       if (info) return this._decorate(ev, info)
     }
+
     return ev
   }
 }
