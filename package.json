@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "test:parser": "node src/parser.test.js",
+    "test:encounters": "node src/encounters.test.js",
+    "test": "npm run test:parser && npm run test:encounters",
     "build": "electron-builder"
   },
   "build": {
