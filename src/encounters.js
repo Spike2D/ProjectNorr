@@ -17,7 +17,7 @@ class EncounterEngine {
     this.lastZone = null
     this.seq = 0
     this.targetLastTs = new Map()
-    this.deadTargets = new Set()
+    this.deadTargets = new Map()
   }
 
   _isPlayer(name) { return !name || /^(you|yourself)$/i.test(String(name).trim()) }
@@ -64,20 +64,24 @@ class EncounterEngine {
     this.current = null
     this.lastCombatTs = null
     this.targetLastTs.clear()
-    this.deadTargets.clear()
   }
 
   _touchMap(map, key) { if (key) map.set(key, (map.get(key) || 0) + 1) }
+
+  _isRecentlyDead(target, ts) {
+    if (!target) return false
+    const deadAt = this.deadTargets.get(target)
+    if (deadAt == null) return false
+    if (ts - deadAt <= this.timeoutMs) return true
+    this.deadTargets.delete(target)
+    return false
+  }
 
   _shouldSplit(ts, target) {
     if (!this.current || this.current.status !== 'active') return false
     if (this.lastCombatTs != null && ts - this.lastCombatTs > this.timeoutMs) return true
     if (!target || !this.lastCombatTs || ts - this.lastCombatTs <= this.targetSwitchMs) return false
-
-    // Same target is always the same encounter until timeout/death.
     if (this.current.targets.has(target) || this.current.target === target) return false
-
-    // A recent tick/activity from any existing target means this is likely an add.
     for (const last of this.targetLastTs.values()) {
       if (ts - last <= this.targetSwitchMs) return false
     }
@@ -102,6 +106,8 @@ class EncounterEngine {
     if (ev.kind === 'zone') {
       if (this.current) this._finish(ev.ts, 'zone-change')
       this.lastZone = ev.zone || this.lastZone
+      this.targetLastTs.clear()
+      this.deadTargets.clear()
       return
     }
 
@@ -116,12 +122,13 @@ class EncounterEngine {
 
     if (ev.kind === 'death') {
       const dead = this._clean(ev.target || ev.name || ev.mob)
+      const ts = Number(ev.ts) || Date.now()
       if (this.current && (!dead || this.current.targets.has(dead) || dead === this.current.target)) {
         this.current.deaths += 1
-        this._record(this.current, ev, dead, Number(ev.ts) || Date.now())
-        this._finish(ev.ts, 'target-death')
+        this._record(this.current, ev, dead, ts)
+        this._finish(ts, 'target-death')
       }
-      if (dead) this.deadTargets.add(dead)
+      if (dead) this.deadTargets.set(dead, ts)
       return
     }
 
@@ -129,7 +136,10 @@ class EncounterEngine {
     const value = Number(ev.ts)
     const ts = Number.isFinite(value) ? value : Date.now()
     const target = this._combatTarget(ev)
-    if (target && this.deadTargets.has(target)) return
+
+    // A late DoT tick after a confirmed death belongs to the completed fight and
+    // must never resurrect the dead target as a new encounter.
+    if (target && this._isRecentlyDead(target, ts)) return
 
     if (this._shouldSplit(ts, target)) this._finish(ts, 'target-switch')
     const enc = this.current || this._new(ts, target)
@@ -145,6 +155,7 @@ class EncounterEngine {
 
   onTick(now = Date.now()) {
     if (this.current && this.lastCombatTs != null && now - this.lastCombatTs > this.timeoutMs) this._finish(now, 'timeout')
+    for (const [target, ts] of this.deadTargets) if (now - ts > this.timeoutMs) this.deadTargets.delete(target)
   }
 
   snapshot() {
