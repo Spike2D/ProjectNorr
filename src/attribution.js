@@ -1,4 +1,5 @@
 const { enhanceCombatEffect } = require('./combat-effects')
+const { applyParserFixes } = require('./parser-fixes')
 
 class AttributionModule {
   constructor() { this.reset() }
@@ -33,14 +34,10 @@ class AttributionModule {
 
   process(ev) {
     if (!ev) return null
-
-    // parseRawLine historically passed an already-attributed event through the
-    // bus again. Make attribution idempotent so live and replay paths cannot
-    // double-decorate an event.
     if (ev.attribution) return ev
 
-    // Combat-effect normalization happens before ownership attribution.
     const rawText = ev.text || ev.message || String(ev.raw || '').replace(/^\[[^\]]+\]\s*/, '')
+    ev = applyParserFixes(rawText, ev)
     ev = enhanceCombatEffect(rawText, ev, ev.seq, ev.ts, ev.raw)
 
     switch (ev.kind) {
