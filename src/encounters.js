@@ -1,5 +1,7 @@
-// Encounter lifecycle engine. Keeps fight boundaries separate from CombatModule so
-// combat statistics can evolve without changing how a fight starts/ends.
+// Encounter lifecycle engine. Boundaries are intentionally independent from CombatModule.
+// A target switch does not automatically mean a new fight: active DoTs/adds can keep
+// the same encounter alive. We only split when the previous target has been quiet
+// for targetSwitchMs, or the whole combat context has timed out.
 class EncounterEngine {
   constructor(options = {}) {
     this.timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 12000
@@ -12,26 +14,40 @@ class EncounterEngine {
     this.encounters = []
     this.current = null
     this.lastCombatTs = null
-    this.lastTarget = null
     this.lastZone = null
     this.seq = 0
+    this.targetLastTs = new Map()
+    this.deadTargets = new Set()
   }
 
   _isPlayer(name) {
     return !name || /^(you|yourself)$/i.test(String(name).trim())
   }
 
+  _clean(name) {
+    return name == null ? null : String(name).trim()
+  }
+
+  // For outgoing events the victim is the encounter target. For incoming events
+  // the hostile attacker is the encounter target. This avoids creating fights
+  // against "You" when the player is hit.
   _combatTarget(ev) {
     if (!ev) return null
-    if (ev.target && !this._isPlayer(ev.target)) return String(ev.target).trim()
-    if (ev.attacker && !this._isPlayer(ev.attacker)) return String(ev.attacker).trim()
+    const attacker = this._clean(ev.attacker)
+    const target = this._clean(ev.target)
+    const owner = this._clean(ev.owner)
+    const attackerIsPlayer = this._isPlayer(attacker) || !!owner
+    if (target && !this._isPlayer(target) && attackerIsPlayer) return target
+    if (attacker && !this._isPlayer(attacker) && target && this._isPlayer(target)) return attacker
+    if (target && !this._isPlayer(target)) return target
+    if (attacker && !this._isPlayer(attacker)) return attacker
     return null
   }
 
   _isCombatEvent(ev) {
     if (!ev) return false
     return [
-      'damage', 'miss', 'resist', 'mitigation', 'heal',
+      'damage', 'miss', 'resist', 'mitigation', 'proc',
       'castBegin', 'castFizzle', 'castInterrupted'
     ].includes(ev.kind)
   }
@@ -42,6 +58,7 @@ class EncounterEngine {
       startTs: ts,
       endTs: null,
       durationMs: 0,
+      durationSeconds: 0,
       zone: this.lastZone,
       target: target || null,
       status: 'active',
@@ -54,6 +71,8 @@ class EncounterEngine {
       events: 0,
       attackers: new Map(),
       targets: new Map(),
+      targetLastTs: new Map(),
+      endReason: null,
     }
     this.current = enc
     this.encounters.unshift(enc)
@@ -63,27 +82,56 @@ class EncounterEngine {
 
   _finish(ts, reason = 'timeout') {
     if (!this.current || this.current.status !== 'active') return
-    const end = Math.max(Number(ts) || this.current.startTs, this.current.startTs)
+    const value = Number(ts)
+    const end = Number.isFinite(value) ? Math.max(value, this.current.startTs) : this.current.startTs
     this.current.endTs = end
     this.current.durationMs = Math.max(0, end - this.current.startTs)
-    this.current.durationSeconds = Math.max(0, this.current.durationMs / 1000)
+    this.current.durationSeconds = Number((this.current.durationMs / 1000).toFixed(2))
     this.current.status = 'completed'
     this.current.endReason = reason
+    this.current.targetLastTs = new Map()
     this.current = null
-    this.lastTarget = null
-  }
-
-  _shouldSplit(ts, target) {
-    if (!this.current || this.current.status !== 'active') return false
-    const now = Number(ts) || this.current.startTs
-    if (this.lastCombatTs != null && now - this.lastCombatTs > this.timeoutMs) return true
-    if (target && this.lastTarget && target !== this.lastTarget && this.lastCombatTs != null && now - this.lastCombatTs > this.targetSwitchMs) return true
-    return false
+    this.lastCombatTs = null
+    this.targetLastTs.clear()
+    this.deadTargets.clear()
   }
 
   _touchMap(map, key) {
     if (!key) return
     map.set(key, (map.get(key) || 0) + 1)
+  }
+
+  _targetIsFresh(target, ts) {
+    if (!target) return false
+    const last = this.targetLastTs.get(target)
+    return last != null && ts - last <= this.targetSwitchMs
+  }
+
+  _shouldSplit(ts, target) {
+    if (!this.current || this.current.status !== 'active') return false
+    if (this.lastCombatTs != null && ts - this.lastCombatTs > this.timeoutMs) return true
+    if (!target) return false
+    if (!this.lastCombatTs || ts - this.lastCombatTs <= this.targetSwitchMs) return false
+
+    // A new target after a quiet period starts a new encounter only if none of
+    // the previous targets has had recent activity (e.g. a DoT tick or add).
+    for (const last of this.targetLastTs.values()) {
+      if (ts - last <= this.targetSwitchMs) return false
+    }
+    return !this._targetIsFresh(target, ts)
+  }
+
+  _record(enc, ev, target, ts) {
+    enc.events += 1
+    if (target) {
+      this._touchMap(enc.targets, target)
+      enc.targetLastTs.set(target, ts)
+      this.targetLastTs.set(target, ts)
+    }
+    if (ev.attacker && !this._isPlayer(ev.attacker)) {
+      this._touchMap(enc.attackers, this._clean(ev.attacker))
+    }
+    if (!enc.target && target) enc.target = target
   }
 
   onEvent(ev, live) {
@@ -93,45 +141,56 @@ class EncounterEngine {
     if (ev.kind === 'zone') {
       if (this.current) this._finish(ev.ts, 'zone-change')
       this.lastZone = ev.zone || this.lastZone
-      this.lastCombatTs = null
-      this.lastTarget = null
       return
     }
 
-    if (ev.kind === 'death' || ev.kind === 'playerDeath') {
+    if (ev.kind === 'playerDeath') {
       if (this.current) {
         this.current.deaths += 1
-        this.current.events += 1
-        this._finish(ev.ts, ev.kind === 'playerDeath' ? 'player-death' : 'death')
+        this._record(this.current, ev, this._combatTarget(ev), Number(ev.ts) || Date.now())
+        this._finish(ev.ts, 'player-death')
       }
+      return
+    }
+
+    if (ev.kind === 'death') {
+      const dead = this._clean(ev.target || ev.name || ev.mob)
+      if (this.current && (!dead || this.current.targets.has(dead) || dead === this.current.target)) {
+        this.current.deaths += 1
+        this._record(this.current, ev, dead, Number(ev.ts) || Date.now())
+        this._finish(ev.ts, 'target-death')
+      }
+      if (dead) this.deadTargets.add(dead)
       return
     }
 
     if (!this._isCombatEvent(ev)) return
 
-    const ts = Number(ev.ts) || Date.now()
+    const tsValue = Number(ev.ts)
+    const ts = Number.isFinite(tsValue) ? tsValue : Date.now()
     const target = this._combatTarget(ev)
+
+    if (target && this.deadTargets.has(target)) {
+      // A late DoT tick after death belongs to the just-finished fight, not a
+      // brand-new encounter. Do not reopen a dead target.
+      return
+    }
+
     if (this._shouldSplit(ts, target)) this._finish(ts, 'target-switch')
     const enc = this.current || this._new(ts, target)
 
-    if (target) {
-      if (!enc.target) enc.target = target
-      this._touchMap(enc.targets, target)
-      this.lastTarget = target
-    }
-    if (ev.attacker && !this._isPlayer(ev.attacker)) this._touchMap(enc.attackers, String(ev.attacker).trim())
+    this._record(enc, ev, target, ts)
 
-    enc.events += 1
     if (ev.kind === 'damage') {
-      const amount = Math.max(0, Number(ev.amount) || 0)
-      enc.damage += amount
-      enc.hits += 1
+      const amount = Number(ev.amount)
+      if (Number.isFinite(amount) && amount >= 0) {
+        enc.damage += amount
+        enc.hits += 1
+      }
     } else if (ev.kind === 'miss') {
       enc.misses += 1
     } else if (ev.kind === 'resist') {
       enc.resists += 1
-    } else if (ev.kind === 'heal') {
-      enc.healing += Math.max(0, Number(ev.amount) || 0)
     }
 
     this.lastCombatTs = ts
@@ -150,13 +209,14 @@ class EncounterEngine {
       const durationMs = enc.status === 'active'
         ? Math.max(0, end - enc.startTs)
         : enc.durationMs
-      const dps = durationMs > 0 ? enc.damage / (durationMs / 1000) : 0
+      const seconds = durationMs / 1000
+      const dps = seconds > 0 ? enc.damage / seconds : 0
       return {
         id: enc.id,
         startTs: enc.startTs,
         endTs: enc.endTs,
         durationMs,
-        durationSeconds: Number((durationMs / 1000).toFixed(2)),
+        durationSeconds: Number(seconds.toFixed(2)),
         zone: enc.zone,
         target: enc.target,
         status: enc.status,
@@ -175,7 +235,7 @@ class EncounterEngine {
     })
 
     return {
-      active: result[0]?.status === 'active' ? result[0] : null,
+      active: result.find(e => e.status === 'active') || null,
       encounters: result,
       timeoutMs: this.timeoutMs,
       targetSwitchMs: this.targetSwitchMs,
