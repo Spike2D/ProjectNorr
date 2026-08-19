@@ -31,7 +31,7 @@ function parseRawLine(line, sequence) {
 }
 
 function getLastLogPath() { return path.join(app.getPath('userData'), 'last-log.json') }
-function loadLastLogPath() { try { const p=getLastLogPath(); if(fs.existsSync(p)){const d=JSON.parse(fs.readFileSync(p,'utf-8'));if(d.path&&fs.existsSync(d.path))return d.path}}catch{} return null }
+function loadLastLogPath() { try { const p=getLastLogPath();if(fs.existsSync(p)){const d=JSON.parse(fs.readFileSync(p,'utf-8'));if(d.path&&fs.existsSync(d.path))return d.path}}catch{} return null }
 function saveLastLogPath(p) { try { const lp=getLastLogPath();fs.mkdirSync(path.dirname(lp),{recursive:true});fs.writeFileSync(lp,JSON.stringify({path:p}),'utf-8') } catch{} }
 
 function subscribeModules(targetBus, targetCombat, targetTracker, targetAttribution, targetEncounters, targetFarming) {
@@ -45,6 +45,19 @@ function subscribeModules(targetBus, targetCombat, targetTracker, targetAttribut
     targetTracker.onEvent(ev, live)
     targetFarming.onEvent(ev, live)
   })
+}
+
+function buildSnapshot() {
+  encounters.onTick(Date.now())
+  combat.setEncounterContext(encounters.current)
+  const encounterSnapshot = encounters.snapshot()
+  return {
+    ...combat.snapshot(),
+    tracker: tracker.snapshot(),
+    encounters: encounterSnapshot.encounters || [],
+    encounterActive: encounterSnapshot.active || null,
+    farming: farming.snapshot()
+  }
 }
 
 function createWindow() {
@@ -71,7 +84,7 @@ ipcMain.handle('scan-log-dates',async(_,folderPath)=>{try{const files=fs.readdir
 
 ipcMain.handle('parse-log-for-date',async(_,filePath)=>{
   const tempCombat=new CombatModule(),tempTracker=new TrackerModule(),tempAttribution=new AttributionModule(),tempEncounters=new EncounterEngine(),tempFarming=new FarmingModule(),tempBus=new LogBus();subscribeModules(tempBus,tempCombat,tempTracker,tempAttribution,tempEncounters,tempFarming)
-  try{const content=fs.readFileSync(filePath,'utf-8'),lines=content.split(/\r?\n/),nameMatch=path.basename(filePath).match(/^eqlog_([^_]+)_/i);if(nameMatch){tempCombat.setPlayerName(nameMatch[1]);tempTracker.player=nameMatch[1]}for(let i=0;i<lines.length;i++){if(!lines[i].trim())continue;const ev=parseRawLine(lines[i],i+1);if(ev)tempBus.emit(ev,true)}tempEncounters.onTick(Date.now());tempCombat.setEncounterContext(tempEncounters.current);return{...tempCombat.snapshot(),tracker:tempTracker.snapshot(),encounters:tempEncounters.snapshot(),farming:tempFarming.snapshot()}}catch(err){return{error:err.message}}
+  try{const content=fs.readFileSync(filePath,'utf-8'),lines=content.split(/\r?\n/),nameMatch=path.basename(filePath).match(/^eqlog_([^_]+)_/i);if(nameMatch){tempCombat.setPlayerName(nameMatch[1]);tempTracker.player=nameMatch[1]}for(let i=0;i<lines.length;i++){if(!lines[i].trim())continue;const ev=parseRawLine(lines[i],i+1);if(ev)tempBus.emit(ev,true)}tempEncounters.onTick(Date.now());tempCombat.setEncounterContext(tempEncounters.current);const encounterSnapshot=tempEncounters.snapshot();return{...tempCombat.snapshot(),tracker:tempTracker.snapshot(),encounters:encounterSnapshot.encounters||[],encounterActive:encounterSnapshot.active||null,farming:tempFarming.snapshot()}}catch(err){return{error:err.message}}
 })
 ipcMain.handle('read-log-file',async(_,filePath)=>{try{return fs.readFileSync(filePath,'utf-8')}catch(err){throw new Error(`Failed to read file: ${err.message}`)}})
 ipcMain.handle('write-log-file',async(_,filePath,content)=>{try{fs.writeFileSync(filePath,content,'utf-8');return true}catch(err){throw new Error(`Failed to write file: ${err.message}`)}})
@@ -86,6 +99,6 @@ async function startParser(filePath) {
 ipcMain.handle('start-parser',async(_,filePath)=>startParser(filePath))
 ipcMain.handle('stop-parser',async()=>{if(tailInterval){clearInterval(tailInterval);tailInterval=null}parsing=false;return true})
 ipcMain.handle('parser-status',async()=>({running:parsing,path:logPath}))
-ipcMain.handle('parser-snapshot',async()=>{encounters.onTick(Date.now());combat.setEncounterContext(encounters.current);return{...combat.snapshot(),tracker:tracker.snapshot(),encounters:encounters.snapshot(),farming:farming.snapshot()}})
+ipcMain.handle('parser-snapshot',async()=>buildSnapshot())
 ipcMain.handle('set-meter-scope',async(_,scope)=>{combat.setMeterScope(scope);return true})
 ipcMain.handle('set-player-name',async(_,name)=>{combat.setPlayerName(name);tracker.player=name;return true})
