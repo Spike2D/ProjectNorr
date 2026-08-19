@@ -23,17 +23,11 @@ let logPath
 let seq = 0
 let parsing = false
 
-function parseLineEvent(line, sequence) {
-  const parsed = parseEvent(line, sequence)
-  return parsed ? enhanceEvent(parsed.text || '', parsed, sequence, parsed.ts, line) : null
-}
-
 function parseRawLine(line, sequence) {
   const parsed = parseEvent(line, sequence)
   if (!parsed) return null
   const match = /^\[(.+?)\]\s?(.*)$/.exec(line)
-  const event = enhanceEvent(match ? match[2] : '', parsed, sequence, parsed.ts, line)
-  return attribution ? attribution.process(event) : event
+  return enhanceEvent(match ? match[2] : '', parsed, sequence, parsed.ts, line)
 }
 
 function getLastLogPath() {
@@ -61,6 +55,8 @@ function saveLastLogPath(p) {
 
 function subscribeModules(targetBus, targetCombat, targetTracker, targetAttribution, targetEncounters, targetFarming) {
   targetBus.subscribe((rawEv, live) => {
+    // Attribution is deliberately performed at one boundary only. Every consumer
+    // receives the same normalized event, preventing duplicate state transitions.
     const ev = targetAttribution.process(rawEv)
     if (ev.kind === 'petClaim' || ev.kind === 'petSay') targetCombat.claimPet(ev.name)
     if (ev.entityType === 'charmed' && ev.name) targetCombat.claimPet(ev.name)
