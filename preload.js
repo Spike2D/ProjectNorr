@@ -11,10 +11,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   statLogFile: (filePath) => ipcRenderer.invoke('stat-log-file', filePath),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
-  parserStart: (filePath) => ipcRenderer.invoke('parser-start', filePath),
-  parserStop: () => ipcRenderer.invoke('parser-stop'),
+  parserStart: (filePath) => ipcRenderer.invoke('start-parser', filePath),
+  parserStop: () => ipcRenderer.invoke('stop-parser'),
   parserSnapshot: () => ipcRenderer.invoke('parser-snapshot'),
-  parserLoading: () => ipcRenderer.invoke('parser-loading'),
   setMeterScope: (scope) => ipcRenderer.invoke('set-meter-scope', scope),
   onParserAutoStarted: (callback) => {
     const listener = () => callback()
