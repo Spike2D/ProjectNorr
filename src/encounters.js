@@ -20,17 +20,9 @@ class EncounterEngine {
     this.deadTargets = new Set()
   }
 
-  _isPlayer(name) {
-    return !name || /^(you|yourself)$/i.test(String(name).trim())
-  }
+  _isPlayer(name) { return !name || /^(you|yourself)$/i.test(String(name).trim()) }
+  _clean(name) { return name == null ? null : String(name).trim() }
 
-  _clean(name) {
-    return name == null ? null : String(name).trim()
-  }
-
-  // For outgoing events the victim is the encounter target. For incoming events
-  // the hostile attacker is the encounter target. This avoids creating fights
-  // against "You" when the player is hit.
   _combatTarget(ev) {
     if (!ev) return null
     const attacker = this._clean(ev.attacker)
@@ -45,35 +37,14 @@ class EncounterEngine {
   }
 
   _isCombatEvent(ev) {
-    if (!ev) return false
-    return [
-      'damage', 'miss', 'resist', 'mitigation', 'proc',
-      'castBegin', 'castFizzle', 'castInterrupted'
-    ].includes(ev.kind)
+    return !!ev && ['damage','miss','resist','mitigation','proc','castBegin','castFizzle','castInterrupted'].includes(ev.kind)
   }
 
   _new(ts, target) {
-    const enc = {
-      id: `${ts}-${this.seq}`,
-      startTs: ts,
-      endTs: null,
-      durationMs: 0,
-      durationSeconds: 0,
-      zone: this.lastZone,
-      target: target || null,
-      status: 'active',
-      damage: 0,
-      hits: 0,
-      misses: 0,
-      resists: 0,
-      healing: 0,
-      deaths: 0,
-      events: 0,
-      attackers: new Map(),
-      targets: new Map(),
-      targetLastTs: new Map(),
-      endReason: null,
-    }
+    const enc = { id: `${ts}-${this.seq}`, startTs: ts, endTs: null, durationMs: 0,
+      durationSeconds: 0, zone: this.lastZone, target: target || null, status: 'active',
+      damage: 0, hits: 0, misses: 0, resists: 0, healing: 0, deaths: 0, events: 0,
+      attackers: new Map(), targets: new Map(), targetLastTs: new Map(), endReason: null }
     this.current = enc
     this.encounters.unshift(enc)
     if (this.encounters.length > this.maxEncounters) this.encounters.length = this.maxEncounters
@@ -96,29 +67,21 @@ class EncounterEngine {
     this.deadTargets.clear()
   }
 
-  _touchMap(map, key) {
-    if (!key) return
-    map.set(key, (map.get(key) || 0) + 1)
-  }
-
-  _targetIsFresh(target, ts) {
-    if (!target) return false
-    const last = this.targetLastTs.get(target)
-    return last != null && ts - last <= this.targetSwitchMs
-  }
+  _touchMap(map, key) { if (key) map.set(key, (map.get(key) || 0) + 1) }
 
   _shouldSplit(ts, target) {
     if (!this.current || this.current.status !== 'active') return false
     if (this.lastCombatTs != null && ts - this.lastCombatTs > this.timeoutMs) return true
-    if (!target) return false
-    if (!this.lastCombatTs || ts - this.lastCombatTs <= this.targetSwitchMs) return false
+    if (!target || !this.lastCombatTs || ts - this.lastCombatTs <= this.targetSwitchMs) return false
 
-    // A new target after a quiet period starts a new encounter only if none of
-    // the previous targets has had recent activity (e.g. a DoT tick or add).
+    // Same target is always the same encounter until timeout/death.
+    if (this.current.targets.has(target) || this.current.target === target) return false
+
+    // A recent tick/activity from any existing target means this is likely an add.
     for (const last of this.targetLastTs.values()) {
       if (ts - last <= this.targetSwitchMs) return false
     }
-    return !this._targetIsFresh(target, ts)
+    return true
   }
 
   _record(enc, ev, target, ts) {
@@ -128,9 +91,7 @@ class EncounterEngine {
       enc.targetLastTs.set(target, ts)
       this.targetLastTs.set(target, ts)
     }
-    if (ev.attacker && !this._isPlayer(ev.attacker)) {
-      this._touchMap(enc.attackers, this._clean(ev.attacker))
-    }
+    if (ev.attacker && !this._isPlayer(ev.attacker)) this._touchMap(enc.attackers, this._clean(ev.attacker))
     if (!enc.target && target) enc.target = target
   }
 
@@ -165,81 +126,43 @@ class EncounterEngine {
     }
 
     if (!this._isCombatEvent(ev)) return
-
-    const tsValue = Number(ev.ts)
-    const ts = Number.isFinite(tsValue) ? tsValue : Date.now()
+    const value = Number(ev.ts)
+    const ts = Number.isFinite(value) ? value : Date.now()
     const target = this._combatTarget(ev)
-
-    if (target && this.deadTargets.has(target)) {
-      // A late DoT tick after death belongs to the just-finished fight, not a
-      // brand-new encounter. Do not reopen a dead target.
-      return
-    }
+    if (target && this.deadTargets.has(target)) return
 
     if (this._shouldSplit(ts, target)) this._finish(ts, 'target-switch')
     const enc = this.current || this._new(ts, target)
-
     this._record(enc, ev, target, ts)
 
     if (ev.kind === 'damage') {
       const amount = Number(ev.amount)
-      if (Number.isFinite(amount) && amount >= 0) {
-        enc.damage += amount
-        enc.hits += 1
-      }
-    } else if (ev.kind === 'miss') {
-      enc.misses += 1
-    } else if (ev.kind === 'resist') {
-      enc.resists += 1
-    }
-
+      if (Number.isFinite(amount) && amount >= 0) { enc.damage += amount; enc.hits += 1 }
+    } else if (ev.kind === 'miss') enc.misses += 1
+    else if (ev.kind === 'resist') enc.resists += 1
     this.lastCombatTs = ts
   }
 
   onTick(now = Date.now()) {
-    if (this.current && this.lastCombatTs != null && now - this.lastCombatTs > this.timeoutMs) {
-      this._finish(now, 'timeout')
-    }
+    if (this.current && this.lastCombatTs != null && now - this.lastCombatTs > this.timeoutMs) this._finish(now, 'timeout')
   }
 
   snapshot() {
     const now = Date.now()
     const result = this.encounters.map(enc => {
       const end = enc.endTs || now
-      const durationMs = enc.status === 'active'
-        ? Math.max(0, end - enc.startTs)
-        : enc.durationMs
+      const durationMs = enc.status === 'active' ? Math.max(0, end - enc.startTs) : enc.durationMs
       const seconds = durationMs / 1000
-      const dps = seconds > 0 ? enc.damage / seconds : 0
-      return {
-        id: enc.id,
-        startTs: enc.startTs,
-        endTs: enc.endTs,
-        durationMs,
-        durationSeconds: Number(seconds.toFixed(2)),
-        zone: enc.zone,
-        target: enc.target,
-        status: enc.status,
-        endReason: enc.endReason || null,
-        damage: enc.damage,
-        dps: Number(dps.toFixed(2)),
-        hits: enc.hits,
-        misses: enc.misses,
-        resists: enc.resists,
-        healing: enc.healing,
-        deaths: enc.deaths,
-        events: enc.events,
-        attackers: Array.from(enc.attackers.entries()).map(([name, count]) => ({ name, count })),
-        targets: Array.from(enc.targets.entries()).map(([name, count]) => ({ name, count })),
-      }
+      return { id: enc.id, startTs: enc.startTs, endTs: enc.endTs, durationMs,
+        durationSeconds: Number(seconds.toFixed(2)), zone: enc.zone, target: enc.target,
+        status: enc.status, endReason: enc.endReason || null, damage: enc.damage,
+        dps: Number((seconds > 0 ? enc.damage / seconds : 0).toFixed(2)), hits: enc.hits,
+        misses: enc.misses, resists: enc.resists, healing: enc.healing, deaths: enc.deaths,
+        events: enc.events, attackers: Array.from(enc.attackers.entries()).map(([name,count])=>({name,count})),
+        targets: Array.from(enc.targets.entries()).map(([name,count])=>({name,count})) }
     })
-
-    return {
-      active: result.find(e => e.status === 'active') || null,
-      encounters: result,
-      timeoutMs: this.timeoutMs,
-      targetSwitchMs: this.targetSwitchMs,
-    }
+    return { active: result.find(e => e.status === 'active') || null, encounters: result,
+      timeoutMs: this.timeoutMs, targetSwitchMs: this.targetSwitchMs }
   }
 }
 
