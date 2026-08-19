@@ -1,4 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
+const fs = require('fs')
+const path = require('path')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   openLogFile: () => ipcRenderer.invoke('open-log-file'),
@@ -19,5 +21,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = () => callback()
     ipcRenderer.on('parser-auto-started', listener)
     return () => ipcRenderer.removeListener('parser-auto-started', listener)
+  }
+})
+
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    const script = document.createElement('script')
+    script.type = 'text/javascript'
+    script.textContent = fs.readFileSync(path.join(__dirname, 'src', 'dps-meter-ui.js'), 'utf8')
+    document.documentElement.appendChild(script)
+  } catch (error) {
+    console.error('[Norr] Failed to load integrated DPS meter UI:', error)
   }
 })
