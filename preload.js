@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectLogFolder: () => ipcRenderer.invoke('select-log-folder'),
   scanLogFiles: (folderPath) => ipcRenderer.invoke('scan-log-files', folderPath),
   scanLogDates: (folderPath) => ipcRenderer.invoke('scan-log-dates', folderPath),
-  parseLogForDate: (filePath) => ipcRenderer.invoke('parse-log-for-date', filePath),
+  parseLogForDate: (filePath, options) => ipcRenderer.invoke('parse-log-for-date', filePath, options),
   readLogFile: (filePath) => ipcRenderer.invoke('read-log-file', filePath),
   writeLogFile: (filePath, content) => ipcRenderer.invoke('write-log-file', filePath, content),
   statLogFile: (filePath) => ipcRenderer.invoke('stat-log-file', filePath),
