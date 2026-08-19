@@ -10,7 +10,7 @@ function normName(name) {
 
 function modifiers(text) {
   if (!text) return []
-  return text.split(/[\s,]+/).filter(Boolean)
+  return String(text).split(/[\s,]+/).filter(Boolean)
 }
 
 function parseAmount(value) {
@@ -18,12 +18,37 @@ function parseAmount(value) {
   return Number.isFinite(n) ? n : null
 }
 
-// Compatibility layer for alternate EverQuest Legends log wording.
-// It only handles events that the main parser classified as unknown, so it
-// cannot override an established parser result.
-function enhanceEvent(text, baseEvent, seq, ts, raw) {
-  if (baseEvent && baseEvent.kind !== 'unknown') return baseEvent
+function lootEvent(raw, seq, ts, text) {
   let m
+
+  // These variants must be checked before the generic loot fallback. The
+  // main parser historically classified them as ordinary loot because they
+  // still contain the word "looted".
+  m = /^You looted (?:(\d+) |an? )?(.+?) from (.+?) corpse and stored it in your currency\.?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'loot', item: m[2].trim(), source: m[3].trim(), count: m[1] ? Number(m[1]) : undefined, disposition: 'currency' }
+
+  m = /^You looted (?:(\d+) |an? )?(.+?) from (.+?) corpse and sold it for (.+?)\.?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'loot', item: m[2].trim(), source: m[3].trim(), count: m[1] ? Number(m[1]) : undefined, disposition: 'sold', sale: m[4].trim() }
+
+  m = /^You looted (?:(\d+) |an? )?(.+?) from (.+?) corpse and stored it in your (Dragon Hoard|tradeskill depot)\.?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'loot', item: m[2].trim(), source: m[3].trim(), count: m[1] ? Number(m[1]) : undefined, disposition: m[4].toLowerCase() === 'dragon hoard' ? 'hoard' : 'depot' }
+
+  m = /^You looted (?:(\d+) |an? )?(.+?) from (.+?) corpse to create (?:an? )?(.+?)\.?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'loot', item: m[2].trim(), source: m[3].trim(), count: m[1] ? Number(m[1]) : undefined, disposition: 'combined', created: m[4].trim() }
+
+  return null
+}
+
+// Compatibility layer for alternate EverQuest Legends log wording.
+// It is deliberately conservative: known parser results are preserved unless
+// the line is one of the explicit special loot variants above.
+function enhanceEvent(text, baseEvent, seq, ts, raw) {
+  let m
+
+  const specialLoot = lootEvent(raw, seq, ts, text)
+  if (specialLoot) return specialLoot
+
+  if (baseEvent && baseEvent.kind !== 'unknown') return baseEvent
 
   m = /^(.+?)\s+(hit|hits|slash|slashes|pierce|pierces|crush|crushes|bash|bashes|kick|kicks|bite|bites|claw|claws|gore|gores|maul|mauls|punch|punches|strike|strikes|slice|slices|backstab|backstabs|slam|slams|sting|stings|rend|rends|smash|smashes|gnaw|gnaws|lash|lashes|smite|smites|cleave|cleaves|reave|reaves|shoot|shoots|frenzy|frenzies|flurry|flurries)\s+(.+?)\s+for\s+(\d+)\s+(?:points?\s+of\s+)?damage\.?(?:\s+\((.+?)\))?$/i.exec(text)
   if (m) {
@@ -79,15 +104,17 @@ function enhanceEvent(text, baseEvent, seq, ts, raw) {
     return { ...eventBase(raw, seq, ts), kind: 'expGain', party: !!m[1], pct: Number.isFinite(pct) ? pct : undefined }
   }
 
-  m = /^(.+?)\s+(?:has been killed|has died|died)\.?$/i.exec(text)
-  if (m && !/^you$/i.test(m[1].trim())) {
-    return { ...eventBase(raw, seq, ts), kind: 'death', name: normName(m[1]), bySelf: false }
-  }
+  m = /^You have been slain by (.+?)[.!]?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'playerDeath', killer: m[1].trim() }
+
+  m = /^You have slain (.+?)[.!]?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'death', name: normName(m[1]), bySelf: true }
+
+  m = /^(.+?)\s+has been (?:killed|slain)|^(.+?)\s+died\.?$/i.exec(text)
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'death', name: normName(m[1] || m[2]), bySelf: false }
 
   m = /^You have looted\s+(?:(\d+)\s+|an?\s+)?(.+?)(?:\s+from\s+(.+?)\s+corpse)?\.?$/i.exec(text)
-  if (m) {
-    return { ...eventBase(raw, seq, ts), kind: 'loot', item: m[2].trim(), source: m[3] ? m[3].replace(/[’']s corpse$/i, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
-  }
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'loot', item: m[2].trim(), source: m[3] ? m[3].replace(/[’']s corpse$/i, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
 
   m = /^You receive\s+(?:(\d+)\s+|an?\s+)?(.+?)\s+from\s+(?:the\s+)?(?:corpse|item)\.?$/i.exec(text)
   if (m && !/(platinum|gold|silver|copper)/i.test(m[2])) {
@@ -95,9 +122,7 @@ function enhanceEvent(text, baseEvent, seq, ts, raw) {
   }
 
   m = /^(.+?)['’]s\s+(.+?)\s+spell\s+has worn off\.?$/i.exec(text)
-  if (m) {
-    return { ...eventBase(raw, seq, ts), kind: 'buffFade', spell: m[2].trim(), target: normName(m[1]) }
-  }
+  if (m) return { ...eventBase(raw, seq, ts), kind: 'buffFade', spell: m[2].trim(), target: normName(m[1]) }
 
   m = /^(.+?)\s+begins\s+(casting|singing)\s+(.+?)\.?$/i.exec(text)
   if (m && !/^you$/i.test(m[1].trim())) {
