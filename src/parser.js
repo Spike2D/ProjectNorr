@@ -157,16 +157,6 @@ const POISON_COAT_MSGS = new Map([
 ])
 const POISON_COAT_OTHER_NAMED_RE = /^(.+?) coats their blades in (.+?)!$/
 const POISON_COAT_OTHER_GENERIC_RE = /^(.+?) coats their blades in poison!$/
-const POISON_PROCS = [
-  { suffix: 'is poisoned.', strikes: ['Strike'], effect: 'poison' },
-]
-const POISON_PROC_BY_LAST_WORD = new Map()
-for (const p of POISON_PROCS) {
-  const w = p.suffix.slice(p.suffix.lastIndexOf(' ') + 1)
-  const list = POISON_PROC_BY_LAST_WORD.get(w)
-  if (list) list.push(p)
-  else POISON_PROC_BY_LAST_WORD.set(w, [p])
-}
 
 const EMOTE_SELF_RE = /^You (?:feel|look|sense|seem)\b[^.]*\.$/
 const EMOTE_PET_RE = /^([A-Z][A-Za-z'`]*(?: [A-Za-z'`]+)*) (?:feels|looks|seems)\b[^.]*\.$/
@@ -319,8 +309,8 @@ const CLASSIFIERS = [
       }
       m = MELEE_RE.exec(text)
       if (m) {
-        const mods = parseModifiers(m[5])
         const verb = meleeVerbBase(m[2])
+        const mods = parseModifiers(m[5])
         return { kind: 'damage', seq: c.seq, ts: c.ts, raw: c.raw, attacker: norm(m[1]), target: norm(m[3]), amount: Number(m[4]), dtype: 'melee', skill: meleeSkill(verb), verb, crit: hasCritical(mods), modifiers: mods }
       }
     }
@@ -790,15 +780,17 @@ const CLASSIFIERS = [
     return null
   },
   function classifyPoisonProc(c) {
-    if (!c.text.includes('is poisoned.')) return null
     const m = /^(.+?) is poisoned\.$/.exec(c.text)
     if (!m) return null
-    const target = norm(m[1])
-    const procs = POISON_PROC_BY_LAST_WORD.get('poisoned.') || []
-    const strikeOnly = procs.every(p => p.strikes.includes('Strike'))
-    const wasStrike = strikeOnly
-    const isStrike = wasStrike
-    return { kind: 'poisonProc', seq: c.seq, ts: c.ts, raw: c.raw, target, isStrike, wasStrike, effect: 'poison' }
+    return {
+      kind: 'proc',
+      seq: c.seq,
+      ts: c.ts,
+      raw: c.raw,
+      target: norm(m[1]),
+      effect: 'poison',
+      name: 'Poison',
+    }
   },
   function classifyDbBuff(c) {
     const { text } = c
