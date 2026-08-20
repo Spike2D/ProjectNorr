@@ -87,7 +87,7 @@ const TIER_OPEN_WORLD = 0
 
 function zoneTier(zone) {
   const base = zone
-    .replace(/\s*-\s*(Solo|Group)\b.*$/i, '')
+    .replace(/\s* -\s*(Solo|Group)\b.*$/i, '')
     .replace(/\s+\d+\s*\([^)]*\)\s*$/, '')
     .replace(/\s+\([^)]*\)\s*$/, '')
     .trim()
@@ -120,7 +120,7 @@ const OFFER_RE = /^You offered [\d,]+ (.+?) to (.+?)\.$/
 const TRADE_DONE_RE = /^You complete the trade with (.+?)\.$/
 const AA_RE = /^You have gained (an|\d+) ability point(?:\(s\))?!\s+You now have (\d+) ability point/
 const AA_SPEND_RE = / at a cost of (\d+) ability points?\.$/
-const AA_ABILITY_RE = /gained the ability (?:"([^"]+)"|to use (.+?)) at a cost of/
+const AA_ABILITY_RE = /gained the ability (?:("([^"]+)")|to use (.+?)) at a cost of/
 const AA_IMPROVED_RE = /^You have improved (.+?) (\d+) at a cost of/
 const AA_POTION_LANDING = 'You are filled with the spirit of alternate adventure.'
 const MEND_RE = /^You mend your wounds and heal some damage\.$/
@@ -157,16 +157,6 @@ const POISON_COAT_MSGS = new Map([
 ])
 const POISON_COAT_OTHER_NAMED_RE = /^(.+?) coats their blades in (.+?)!$/
 const POISON_COAT_OTHER_GENERIC_RE = /^(.+?) coats their blades in poison!$/
-const POISON_PROCS = [
-  { suffix: 'is poisoned.', strikes: ['Strike'], effect: 'poison' },
-]
-const POISON_PROC_BY_LAST_WORD = new Map()
-for (const p of POISON_PROCS) {
-  const w = p.suffix.slice(p.suffix.lastIndexOf(' ') + 1)
-  const list = POISON_PROC_BY_LAST_WORD.get(w)
-  if (list) list.push(p)
-  else POISON_PROC_BY_LAST_WORD.set(w, [p])
-}
 
 const EMOTE_SELF_RE = /^You (?:feel|look|sense|seem)\b[^.]*\.$/
 const EMOTE_PET_RE = /^([A-Z][A-Za-z'`]*(?: [A-Za-z'`]+)*) (?:feels|looks|seems)\b[^.]*\.$/
@@ -299,7 +289,7 @@ const CLASSIFIERS = [
           mtype = m[5] === 'parries' ? 'parry' : m[5] === 'dodges' ? 'dodge' : m[5] === 'ripostes' ? 'riposte' : 'block'
           target = norm(m[4])
         } else if (m[7]) { mtype = m[7]; target = 'You' }
-        else if (m[9]) { mtype = 'absorb'; target = 'You' }
+        else if (m[9]) { mtype = m[9]; target = 'You' }
         else { mtype = 'absorb'; target = norm(m[2]) }
         const verbM = / tr(?:y|ies) to (\w+)/.exec(text)
         const modM = / \(([A-Za-z]+)\)$/.exec(text)
@@ -319,8 +309,8 @@ const CLASSIFIERS = [
       }
       m = MELEE_RE.exec(text)
       if (m) {
-        const mods = parseModifiers(m[5])
         const verb = meleeVerbBase(m[2])
+        const mods = parseModifiers(m[5])
         return { kind: 'damage', seq: c.seq, ts: c.ts, raw: c.raw, attacker: norm(m[1]), target: norm(m[3]), amount: Number(m[4]), dtype: 'melee', skill: meleeSkill(verb), verb, crit: hasCritical(mods), modifiers: mods }
       }
     }
@@ -532,7 +522,10 @@ const CLASSIFIERS = [
       const m = DESTROY_RE.exec(text)
       if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), disposition: 'destroyed', count: Number(m[1]) }
     }
-    // Specific loot messages must be checked before the generic looted regex.
+    if (text.includes('looted')) {
+      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)
+      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
+    }
     if (text.startsWith('You looted ')) {
       const cur = LOOT_CURRENCY_RE.exec(text)
       if (cur) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: cur[2].trim(), source: cur[3].trim(), count: cur[1] ? Number(cur[1]) : undefined, disposition: 'currency' }
@@ -542,8 +535,6 @@ const CLASSIFIERS = [
       if (stored) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: stored[2].trim(), source: stored[3].trim(), count: stored[1] ? Number(stored[1]) : undefined, disposition: stored[4] === 'Dragon Hoard' ? 'hoard' : 'depot' }
       const combine = LOOT_COMBINE_RE.exec(text)
       if (combine) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: combine[2].trim(), source: combine[3].trim(), count: combine[1] ? Number(combine[1]) : undefined, disposition: 'combined', created: combine[4]?.trim() }
-      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)
-      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
     }
     return null
   },
@@ -790,15 +781,17 @@ const CLASSIFIERS = [
     return null
   },
   function classifyPoisonProc(c) {
-    if (!c.text.includes('is poisoned.')) return null
     const m = /^(.+?) is poisoned\.$/.exec(c.text)
     if (!m) return null
-    const target = norm(m[1])
-    const procs = POISON_PROC_BY_LAST_WORD.get('poisoned.') || []
-    const strikeOnly = procs.every(p => p.strikes.includes('Strike'))
-    const wasStrike = strikeOnly
-    const isStrike = wasStrike
-    return { kind: 'poisonProc', seq: c.seq, ts: c.ts, raw: c.raw, target, isStrike, wasStrike, effect: 'poison' }
+    return {
+      kind: 'proc',
+      seq: c.seq,
+      ts: c.ts,
+      raw: c.raw,
+      target: norm(m[1]),
+      effect: 'poison',
+      name: 'Poison',
+    }
   },
   function classifyDbBuff(c) {
     const { text } = c
