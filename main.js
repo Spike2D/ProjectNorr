@@ -2,8 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
-const { parseEvent } = require('./src/parser')
-const { enhanceEvent } = require('./src/parser-enhancements')
+const { parseEvent } = require('./src/parser-v2')
 const { AttributionModule } = require('./src/attribution')
 const { LogBus } = require('./src/bus')
 const { CombatModule } = require('./src/combat')
@@ -17,7 +16,7 @@ const LIVE_TAIL_BYTES=4*1024*1024
 const LIVE_ENCOUNTER_LIMIT=50
 const historyCache=new Map()
 
-function parseRawLine(line,sequence){const parsed=parseEvent(line,sequence);if(!parsed)return null;const match=/^\[(.+?)\]\s?(.*)$/.exec(line);return enhanceEvent(match?match[2]:'',parsed,sequence,parsed.ts,line)}
+function parseRawLine(line,sequence){return parseEvent(line,sequence)}
 function getLastLogPath(){return path.join(app.getPath('userData'),'last-log.json')}
 function loadLastLogPath(){try{const p=getLastLogPath();if(fs.existsSync(p)){const d=JSON.parse(fs.readFileSync(p,'utf-8'));if(d.path&&fs.existsSync(d.path))return d.path}}catch{}return null}
 function saveLastLogPath(p){try{const lp=getLastLogPath();fs.mkdirSync(path.dirname(lp),{recursive:true});fs.writeFileSync(lp,JSON.stringify({path:p}),'utf-8')}catch{}}
