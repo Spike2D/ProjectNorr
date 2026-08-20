@@ -59,7 +59,7 @@ const MELEE_VERBS =
 const MELEE_RE = new RegExp(`^(.+?) (${MELEE_VERBS}) (.+?) for (\\d+) points? of damage\\.(?: \\((.+?)\\))?$`)
 const SPELL_RE = /^(.+?) (?:hits?) (.+?) for (\d+) points of ([\w-]+) damage by (.+?)\.(?: \((.+?)\))?$/
 const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)\.(?: \((.+?)\))?$/
-const HEAL_RE = /^(.+?) healed (.+?)( over time)? for (\d+)(?: \((\d+))? hit points?(?: by (.+?))?\.(?: \(([A-Za-z][A-Za-z ]*)\))?$/
+const HEAL_RE = /^(.+?) healed (.+?)( over time)? for (\d+)(?: \((\d+)\))? hit points?(?: by (.+?))?\.(?: \(([A-Za-z][A-Za-z ]*)\))?$/
 const MISS_RE = new RegExp(
   '^(.+?) tr(?:y|ies) to \\w+ (?:on )?(.+?), but ' +
     '(?:(miss|misses)' +
@@ -219,7 +219,7 @@ const CONSIDER_FACTION_RUNGS = [
 const CONSIDER_RE = new RegExp(
   '^(.+?)( - a rare creature -)? (' +
     CONSIDER_FACTION_RUNGS.map((r) => r.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') +
-    ') -- (.+?)\s*\(Lvl: (\d+)\)$'
+    ') -- (.+?)\\s*\\(Lvl: (\\d+)\\)$'
 )
 
 function meleeSkill(verb) {
