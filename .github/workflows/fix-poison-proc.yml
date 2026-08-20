@@ -17,7 +17,6 @@ jobs:
           from pathlib import Path
           p = Path('src/parser.js')
           s = p.read_text()
-
           old = """const POISON_PROCS = [
   { suffix: 'is poisoned.', strikes: ['Strike'], effect: 'poison' },
 ]
@@ -32,7 +31,6 @@ for (const p of POISON_PROCS) {
           if old not in s:
               raise SystemExit('poison proc registry not found')
           s = s.replace(old, '', 1)
-
           old = """  function classifyPoisonProc(c) {
     if (!c.text.includes('is poisoned.')) return null
     const m = /^(.+?) is poisoned\\.$/.exec(c.text)
