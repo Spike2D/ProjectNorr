@@ -1,0 +1,59 @@
+name: Apply parser bug fixes
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-parser-bugs.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch parser.js
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/parser.js')
+          s = p.read_text(encoding='utf-8')
+
+          old = "const MELEE_RE = new RegExp(`^(.+?) (?:${MELEE_VERBS}) (.+?) for (\\\\d+) points? of damage\\\\.(?: \\\\((.+?)\\\\))?$`)"
+          new = "const MELEE_RE = new RegExp(`^(.+?) (${MELEE_VERBS}) (.+?) for (\\\\d+) points? of damage\\\\.(?: \\\\((.+?)\\\\))?$`)"
+          if old not in s:
+              raise SystemExit('MELEE_RE pattern not found')
+          s = s.replace(old, new, 1)
+
+          old = """        const verbM = / (hit|slash|pierce|crush|bash|kick|bite|claw|gore|maul|punch|strike|slice|backstab|slam|sting|rend|smash|gnaw|lash|smite|cleave|reave|shoot|frenzy|flurry) /.exec(text)\n        const mods = parseModifiers(m[4])\n        const verb = verbM ? meleeVerbBase(verbM[1]) : 'hit'"""
+          new = """        const mods = parseModifiers(m[5])\n        const verb = meleeVerbBase(m[2])"""
+          if old not in s:
+              raise SystemExit('melee classification block not found')
+          s = s.replace(old, new, 1)
+
+          old = """    if (text.includes('looted')) {\n      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)\n      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }\n    }\n    if (text.startsWith('You looted ')) {"""
+          new = """    if (text.startsWith('You looted ')) {"""
+          if old not in s:
+              raise SystemExit('loot ordering block not found')
+          s = s.replace(old, new, 1)
+
+          marker = """      if (combine) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: combine[2].trim(), source: combine[3].trim(), count: combine[1] ? Number(combine[1]) : undefined, disposition: 'combined', created: combine[4]?.trim() }\n    }\n    return null"""
+          replacement = """      if (combine) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: combine[2].trim(), source: combine[3].trim(), count: combine[1] ? Number(combine[1]) : undefined, disposition: 'combined', created: combine[4]?.trim() }\n    }\n    if (text.includes('looted')) {\n      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)\n      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }\n    }\n    return null"""
+          if marker not in s:
+              raise SystemExit('loot insertion marker not found')
+          s = s.replace(marker, replacement, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Verify parser
+        run: node src/parser.test.js
+      - name: Commit fixes and remove workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/parser.js
+          git rm .github/workflows/fix-parser-bugs.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(parser): correct melee parsing and loot event precedence'
+          git push
