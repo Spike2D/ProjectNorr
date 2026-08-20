@@ -66,7 +66,13 @@ const poison = expectKind('A rogue coats their blades in neurotoxic poison!', 'p
 assert.equal(poison.poison, 'neurotoxic poison')
 assert.equal(poison.self, false)
 
+const proc = expectKind('A goblin is poisoned.', 'proc')
+assert.equal(proc.effect, 'poison')
+assert.equal(proc.name, 'Poison')
+assert.equal(proc.isStrike, undefined)
+assert.equal(proc.wasStrike, undefined)
+
 const unknown = parse('This is deliberately unrecognized parser text.')
 assert.equal(unknown.kind, 'unknown')
 
-console.log('Parser regression tests passed: 24')
+console.log('Parser regression tests passed: 25')
