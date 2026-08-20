@@ -59,7 +59,7 @@ const MELEE_VERBS =
 const MELEE_RE = new RegExp(`^(.+?) (${MELEE_VERBS}) (.+?) for (\\d+) points? of damage\\.(?: \\((.+?)\\))?$`)
 const SPELL_RE = /^(.+?) (?:hits?) (.+?) for (\d+) points of ([\w-]+) damage by (.+?)\.(?: \((.+?)\))?$/
 const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)\.(?: \((.+?)\))?$/
-const HEAL_RE = /^(.+?) healed (.+?)( over time)? for (\d+)(?: \((\d+)\))? hit points?(?: by (.+?))?\.(?: \(([A-Za-z][A-Za-z ]*)\))?$/
+const HEAL_RE = /^(.+?) healed (.+?)( over time)? for (\d+)(?: \((\d+))? hit points?(?: by (.+?))?\.(?: \(([A-Za-z][A-Za-z ]*)\))?$/
 const MISS_RE = new RegExp(
   '^(.+?) tr(?:y|ies) to \\w+ (?:on )?(.+?), but ' +
     '(?:(miss|misses)' +
@@ -87,7 +87,7 @@ const TIER_OPEN_WORLD = 0
 
 function zoneTier(zone) {
   const base = zone
-    .replace(/\s* -\s*(Solo|Group)\b.*$/i, '')
+    .replace(/\s*-\s*(Solo|Group)\b.*$/i, '')
     .replace(/\s+\d+\s*\([^)]*\)\s*$/, '')
     .replace(/\s+\([^)]*\)\s*$/, '')
     .trim()
@@ -120,7 +120,7 @@ const OFFER_RE = /^You offered [\d,]+ (.+?) to (.+?)\.$/
 const TRADE_DONE_RE = /^You complete the trade with (.+?)\.$/
 const AA_RE = /^You have gained (an|\d+) ability point(?:\(s\))?!\s+You now have (\d+) ability point/
 const AA_SPEND_RE = / at a cost of (\d+) ability points?\.$/
-const AA_ABILITY_RE = /gained the ability (?:("([^"]+)")|to use (.+?)) at a cost of/
+const AA_ABILITY_RE = /gained the ability (?:"([^"]+)"|to use (.+?)) at a cost of/
 const AA_IMPROVED_RE = /^You have improved (.+?) (\d+) at a cost of/
 const AA_POTION_LANDING = 'You are filled with the spirit of alternate adventure.'
 const MEND_RE = /^You mend your wounds and heal some damage\.$/
@@ -219,7 +219,7 @@ const CONSIDER_FACTION_RUNGS = [
 const CONSIDER_RE = new RegExp(
   '^(.+?)( - a rare creature -)? (' +
     CONSIDER_FACTION_RUNGS.map((r) => r.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') +
-    ') -- (.+?)\\s*\\(Lvl: (\\d+)\\)$'
+    ') -- (.+?)\s*\(Lvl: (\d+)\)$'
 )
 
 function meleeSkill(verb) {
@@ -289,7 +289,7 @@ const CLASSIFIERS = [
           mtype = m[5] === 'parries' ? 'parry' : m[5] === 'dodges' ? 'dodge' : m[5] === 'ripostes' ? 'riposte' : 'block'
           target = norm(m[4])
         } else if (m[7]) { mtype = m[7]; target = 'You' }
-        else if (m[9]) { mtype = m[9]; target = 'You' }
+        else if (m[9]) { mtype = 'absorb'; target = 'You' }
         else { mtype = 'absorb'; target = norm(m[2]) }
         const verbM = / tr(?:y|ies) to (\w+)/.exec(text)
         const modM = / \(([A-Za-z]+)\)$/.exec(text)
@@ -522,10 +522,7 @@ const CLASSIFIERS = [
       const m = DESTROY_RE.exec(text)
       if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), disposition: 'destroyed', count: Number(m[1]) }
     }
-    if (text.includes('looted')) {
-      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)
-      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
-    }
+    // Specific loot messages must be checked before the generic looted regex.
     if (text.startsWith('You looted ')) {
       const cur = LOOT_CURRENCY_RE.exec(text)
       if (cur) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: cur[2].trim(), source: cur[3].trim(), count: cur[1] ? Number(cur[1]) : undefined, disposition: 'currency' }
@@ -535,6 +532,8 @@ const CLASSIFIERS = [
       if (stored) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: stored[2].trim(), source: stored[3].trim(), count: stored[1] ? Number(stored[1]) : undefined, disposition: stored[4] === 'Dragon Hoard' ? 'hoard' : 'depot' }
       const combine = LOOT_COMBINE_RE.exec(text)
       if (combine) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: combine[2].trim(), source: combine[3].trim(), count: combine[1] ? Number(combine[1]) : undefined, disposition: 'combined', created: combine[4]?.trim() }
+      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)
+      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
     }
     return null
   },
