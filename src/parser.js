@@ -53,7 +53,10 @@ function looksDamage(text) {
 const MELEE_VERBS =
   'hit(?:s)?|slash(?:es)?|pierce(?:s)?|crush(?:es)?|bash(?:es)?|kick(?:s)?|bite(?:s)?|claw(?:s)?|gore(?:s)?|maul(?:s)?|punch(?:es)?|strike(?:s)?|slice(?:s)?|backstab(?:s)?|slam(?:s)?|sting(?:s)?|rend(?:s)?|smash(?:es)?|gnaw(?:s)?|lash(?:es)?|smite(?:s)?|cleave(?:s)?|reave(?:s)?|shoot(?:s)?|frenzies on|frenzy on|flurries|flurry'
 
-const MELEE_RE = new RegExp(`^(.+?) (?:${MELEE_VERBS}) (.+?) for (\\d+) points? of damage\\.(?: \\((.+?)\\))?$`)
+// Capture the actual melee verb. The previous parser used a non-capturing
+// group here and then tried to recover the verb with a second regex, which
+// made the capture indexes inconsistent with the modifiers capture.
+const MELEE_RE = new RegExp(`^(.+?) (${MELEE_VERBS}) (.+?) for (\\d+) points? of damage\\.(?: \\((.+?)\\))?$`)
 const SPELL_RE = /^(.+?) (?:hits?) (.+?) for (\d+) points of ([\w-]+) damage by (.+?)\.(?: \((.+?)\))?$/
 const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)\.(?: \((.+?)\))?$/
 const HEAL_RE = /^(.+?) healed (.+?)( over time)? for (\d+)(?: \((\d+)\))? hit points?(?: by (.+?))?\.(?: \(([A-Za-z][A-Za-z ]*)\))?$/
@@ -215,7 +218,6 @@ const CONSIDER_FACTION_RUNGS = [
   { phrase: 'appears', faction: 'neutral' },
   { phrase: 'is', faction: 'neutral' },
   { phrase: 'looks to be', faction: 'neutral' },
-  { phrase: 'appears to be', faction: 'neutral' },
   { phrase: 'is approximately', faction: 'neutral' },
   { phrase: 'is about', faction: 'neutral' },
   { phrase: 'seems about', faction: 'neutral' },
@@ -317,10 +319,9 @@ const CLASSIFIERS = [
       }
       m = MELEE_RE.exec(text)
       if (m) {
-        const verbM = / (hit|slash|pierce|crush|bash|kick|bite|claw|gore|maul|punch|strike|slice|backstab|slam|sting|rend|smash|gnaw|lash|smite|cleave|reave|shoot|frenzy|flurry) /.exec(text)
-        const mods = parseModifiers(m[4])
-        const verb = verbM ? meleeVerbBase(verbM[1]) : 'hit'
-        return { kind: 'damage', seq: c.seq, ts: c.ts, raw: c.raw, attacker: norm(m[1]), target: norm(m[2]), amount: Number(m[3]), dtype: 'melee', skill: meleeSkill(verb), verb, crit: hasCritical(mods), modifiers: mods }
+        const mods = parseModifiers(m[5])
+        const verb = meleeVerbBase(m[2])
+        return { kind: 'damage', seq: c.seq, ts: c.ts, raw: c.raw, attacker: norm(m[1]), target: norm(m[3]), amount: Number(m[4]), dtype: 'melee', skill: meleeSkill(verb), verb, crit: hasCritical(mods), modifiers: mods }
       }
     }
     if (text.includes('has taken')) {
@@ -531,10 +532,7 @@ const CLASSIFIERS = [
       const m = DESTROY_RE.exec(text)
       if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), disposition: 'destroyed', count: Number(m[1]) }
     }
-    if (text.includes('looted')) {
-      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)
-      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
-    }
+    // Specific loot messages must be checked before the generic looted regex.
     if (text.startsWith('You looted ')) {
       const cur = LOOT_CURRENCY_RE.exec(text)
       if (cur) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: cur[2].trim(), source: cur[3].trim(), count: cur[1] ? Number(cur[1]) : undefined, disposition: 'currency' }
@@ -544,6 +542,8 @@ const CLASSIFIERS = [
       if (stored) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: stored[2].trim(), source: stored[3].trim(), count: stored[1] ? Number(stored[1]) : undefined, disposition: stored[4] === 'Dragon Hoard' ? 'hoard' : 'depot' }
       const combine = LOOT_COMBINE_RE.exec(text)
       if (combine) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: combine[2].trim(), source: combine[3].trim(), count: combine[1] ? Number(combine[1]) : undefined, disposition: 'combined', created: combine[4]?.trim() }
+      const m = LOOT_RE.exec(text) || LOOT_RE_PLAIN.exec(text)
+      if (m) return { kind: 'loot', seq: c.seq, ts: c.ts, raw: c.raw, item: m[2].trim(), source: m[3] ? m[3].replace(/'s corpse$/, '').trim() : undefined, count: m[1] ? Number(m[1]) : undefined }
     }
     return null
   },
